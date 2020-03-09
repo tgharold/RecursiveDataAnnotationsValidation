@@ -8,7 +8,7 @@ namespace OptionsPatternMvc.Example.Extensions
     {
         public static OptionsBuilder<TOptions> RecursivelyValidateDataAnnotations<TOptions>(
             this OptionsBuilder<TOptions> optionsBuilder
-        ) where TOptions : class
+            ) where TOptions : class
         {
             optionsBuilder.Services.AddSingleton<IValidateOptions<TOptions>>(
                 new RecursiveDataAnnotationValidateOptions<TOptions>(

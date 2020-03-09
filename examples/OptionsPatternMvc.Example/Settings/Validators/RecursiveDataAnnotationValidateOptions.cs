@@ -10,6 +10,8 @@ namespace OptionsPatternMvc.Example.Settings.Validators
         : IValidateOptions<TOptions>
         where TOptions : class
     {
+        private static readonly RecursiveDataAnnotationValidator _recursiveDataAnnotationValidator = new RecursiveDataAnnotationValidator(); 
+        
         public RecursiveDataAnnotationValidateOptions(string optionsBuilderName)
         {
             Name = optionsBuilderName;
@@ -20,11 +22,11 @@ namespace OptionsPatternMvc.Example.Settings.Validators
             if (Name != null && name != Name) return ValidateOptionsResult.Skip;
             
             var validationResults = new List<ValidationResult>();
-            if (RecursiveDataAnnotationValidator.TryValidateObjectRecursive(
+            if (_recursiveDataAnnotationValidator.TryValidateObjectRecursive(
                 options,
                 new ValidationContext(options, serviceProvider: null, items: null),
                 validationResults
-            ))
+                ))
             {
                 return ValidateOptionsResult.Success;
             }
