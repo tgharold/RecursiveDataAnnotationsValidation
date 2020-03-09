@@ -7,8 +7,21 @@ using RecursiveDataAnnotationsValidation.Extensions;
 
 namespace RecursiveDataAnnotationsValidation
 {
-    internal static class RecursiveDataAnnotationValidator
+    public static class RecursiveDataAnnotationValidator
     {
+        public static bool TryValidateObjectRecursive<T>(
+            T obj, 
+            ValidationContext validationContext, 
+            List<ValidationResult> validationResults
+        ) where T : class
+        {
+            return TryValidateObjectRecursive(
+                obj, 
+                validationResults,
+                validationContext.Items
+            );
+        }
+
         private static bool TryValidateObject(
             object obj, 
             ICollection<ValidationResult> validationResults, 
@@ -24,19 +37,6 @@ namespace RecursiveDataAnnotationsValidation
                     ), 
                 validationResults, 
                 true
-                );
-        }
-
-        public static bool TryValidateObjectRecursive<T>(
-            T obj, 
-            ValidationContext validationContext, 
-            List<ValidationResult> validationResults
-            ) where T : class
-        {
-            return TryValidateObjectRecursive(
-                obj, 
-                validationResults,
-                validationContext.Items
                 );
         }
 

@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using RecursiveDataAnnotationsValidation;
+using OptionsPatternMvc.Example.Settings.Validators;
 
 namespace OptionsPatternMvc.Example.Extensions
 {

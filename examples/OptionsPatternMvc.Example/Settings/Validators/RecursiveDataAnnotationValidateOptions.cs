@@ -2,8 +2,9 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using Microsoft.Extensions.Options;
+using RecursiveDataAnnotationsValidation;
 
-namespace RecursiveDataAnnotationsValidation
+namespace OptionsPatternMvc.Example.Settings.Validators
 {
     public class RecursiveDataAnnotationValidateOptions<TOptions> 
         : IValidateOptions<TOptions>
