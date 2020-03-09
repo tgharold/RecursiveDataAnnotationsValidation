@@ -103,11 +103,11 @@ namespace RecursiveDataAnnotationsValidation
                                 {
                                     var property1 = property;
                                     validationResults.Add(
-                                        new ValidationResult(
-                                            validationResult.ErrorMessage, 
-                                            validationResult.MemberNames.Select(x => property1.Name + '.' + x)
-                                            ));
-                                }
+                                    new ValidationResult(
+                                        validationResult.ErrorMessage, 
+                                        validationResult.MemberNames.Select(x => property1.Name + '.' + x)
+                                        ));
+                            }
                             }
                         }
                         break;
@@ -126,10 +126,10 @@ namespace RecursiveDataAnnotationsValidation
                             {
                                 var property1 = property;
                                 validationResults.Add(
-                                    new ValidationResult(
-                                        validationResult.ErrorMessage, 
-                                        validationResult.MemberNames.Select(x => property1.Name + '.' + x)
-                                        ));
+                                new ValidationResult(
+                                    validationResult.ErrorMessage, 
+                                    validationResult.MemberNames.Select(x => property1.Name + '.' + x)
+                                    ));
                             }
                         }
                         break;

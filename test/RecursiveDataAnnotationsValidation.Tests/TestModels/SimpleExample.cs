@@ -9,5 +9,11 @@ namespace RecursiveDataAnnotationsValidation.Tests.TestModels
         
         [Required]
         public string StringB { get; set; }
+        
+        [Required]
+        public bool? BoolC { get; set; }
+        
+        [Required]
+        public ExampleEnum? ExampleEnumD { get; set; }        
     }
 }
