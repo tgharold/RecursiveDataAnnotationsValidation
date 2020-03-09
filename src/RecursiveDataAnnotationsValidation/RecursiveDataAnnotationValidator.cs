@@ -22,24 +22,6 @@ namespace RecursiveDataAnnotationsValidation
             );
         }
 
-        private bool TryValidateObject(
-            object obj, 
-            ICollection<ValidationResult> validationResults, 
-            IDictionary<object, object> validationContextItems = null
-            )
-        {
-            return Validator.TryValidateObject(
-                obj, 
-                new ValidationContext(
-                    obj, 
-                    null,
-                    validationContextItems
-                    ), 
-                validationResults, 
-                true
-                );
-        }
-
         public bool TryValidateObjectRecursive<T>(
             T obj, 
             List<ValidationResult> validationResults, 
@@ -52,6 +34,24 @@ namespace RecursiveDataAnnotationsValidation
                 new HashSet<object>(), 
                 validationContextItems
                 );
+        }
+
+        private bool TryValidateObject(
+            object obj, 
+            ICollection<ValidationResult> validationResults, 
+            IDictionary<object, object> validationContextItems = null
+        )
+        {
+            return Validator.TryValidateObject(
+                obj, 
+                new ValidationContext(
+                    obj, 
+                    null,
+                    validationContextItems
+                ), 
+                validationResults, 
+                true
+            );
         }
 
         private bool TryValidateObjectRecursive<T>(
@@ -87,12 +87,15 @@ namespace RecursiveDataAnnotationsValidation
                         continue;
                     
                     case IEnumerable asEnumerable:
-                        foreach (var enumObj in asEnumerable)
+                        foreach (var item in asEnumerable)
                         {
-                            if (enumObj == null) continue;
+                            //NOTE: This does not tell you which item in the IEnumerable<T> failed
+                            //Possibly, should have a separate case for Array/Dictionary
+                            
+                            if (item == null) continue;
                             nestedResults = new List<ValidationResult>();
                             if (!TryValidateObjectRecursive(
-                                enumObj, 
+                                item, 
                                 nestedResults, 
                                 validatedObjects, 
                                 validationContextItems
@@ -107,7 +110,7 @@ namespace RecursiveDataAnnotationsValidation
                                         validationResult.ErrorMessage, 
                                         validationResult.MemberNames.Select(x => property1.Name + '.' + x)
                                         ));
-                            }
+                                }
                             }
                         }
                         break;
