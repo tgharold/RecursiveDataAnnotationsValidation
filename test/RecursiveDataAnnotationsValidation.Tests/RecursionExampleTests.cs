@@ -6,7 +6,7 @@ using Xunit;
 
 namespace RecursiveDataAnnotationsValidation.Tests
 {
-    public class RecursiveExampleTests
+    public class RecursionExampleTests
     {
         private readonly IRecursiveDataAnnotationValidator _validator = new RecursiveDataAnnotationValidator();
         
@@ -15,24 +15,24 @@ namespace RecursiveDataAnnotationsValidation.Tests
         [Fact]
         public void Passes_all_validation()
         {
-            var recursion = new RecursiveExample
+            var recursion = new RecursionExample
             {
                 Name = "Recursion1",
                 BooleanA = false,
-                Recursive = new RecursiveExample
+                Recursion = new RecursionExample
                 {
                     Name = "Recursion1.Inner1",
                     BooleanA = true,
-                    Recursive = null
+                    Recursion = null
                 }
             };
-            recursion.Recursive.Recursive = recursion;
+            recursion.Recursion.Recursion = recursion;
             
-            var sut = new RecursiveExample
+            var sut = new RecursionExample
             {
                 Name = "SUT",
                 BooleanA = true,
-                Recursive = recursion
+                Recursion = recursion
             };
             
             var validationResults = new List<ValidationResult>();
@@ -45,24 +45,24 @@ namespace RecursiveDataAnnotationsValidation.Tests
         [Fact]
         public void Fails_because_inner1_boolean_is_null()
         {
-            var recursion = new RecursiveExample
+            var recursion = new RecursionExample
             {
                 Name = "Recursion1",
                 BooleanA = false,
-                Recursive = new RecursiveExample
+                Recursion = new RecursionExample
                 {
                     Name = "Recursion1.Inner1",
                     BooleanA = null,
-                    Recursive = null
+                    Recursion = null
                 }
             };
-            recursion.Recursive.Recursive = recursion;
+            recursion.Recursion.Recursion = recursion;
             
-            var sut = new RecursiveExample
+            var sut = new RecursionExample
             {
                 Name = "SUT",
                 BooleanA = true,
-                Recursive = recursion
+                Recursion = recursion
             };
             
             var validationResults = new List<ValidationResult>();
@@ -71,7 +71,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             Assert.False(result);
             Assert.NotEmpty(validationResults);
             Assert.NotNull(validationResults
-                .FirstOrDefault(x => x.MemberNames.Contains("Recursive.Recursive.BooleanA")));
+                .FirstOrDefault(x => x.MemberNames.Contains("Recursion.Recursion.BooleanA")));
         }        
     }
 }

@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace RecursiveDataAnnotationsValidation.Tests.TestModels
 {
-    public class RecursiveExample
+    public class RecursionExample
     {
         [Required]
         public string Name { get; set; }
@@ -11,6 +11,6 @@ namespace RecursiveDataAnnotationsValidation.Tests.TestModels
         public bool? BooleanA { get; set; }
         
         [Required]
-        public RecursiveExample Recursive { get; set; }
+        public RecursionExample Recursion { get; set; }
     }
 }
