@@ -27,4 +27,3 @@ jobs:
 
     - name: Run unit tests
       run: dotnet test --configuration Release
-      working-directory: ./src
