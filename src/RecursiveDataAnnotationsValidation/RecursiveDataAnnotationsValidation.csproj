@@ -2,7 +2,6 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
-    <PackageVersion>1.0.0</PackageVersion><!-- keep at 1.0.0, otherwisse the CI/CD will not override it -->
     <Title>Recurisive DataAnnotations Validation</Title>
     <Authors>Thomas Harold</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
