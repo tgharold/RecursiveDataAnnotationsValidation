@@ -5,7 +5,7 @@
     <PackageVersion>9.99.999</PackageVersion>
     <Title>Recurisive DataAnnotations Validation</Title>
     <Authors>Thomas Harold</Authors>
-    <PackageLicenseUrl>https://github.com/tgharold/RecursiveDataAnnotationsValidation/blob/master/LICENSE</PackageLicenseUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/tgharold/RecursiveDataAnnotationsValidation</RepositoryUrl>
     <PackageTags>dataannotation validator</PackageTags>
   </PropertyGroup>
