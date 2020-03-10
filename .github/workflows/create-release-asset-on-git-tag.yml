@@ -57,6 +57,7 @@ jobs:
         with:
           args: >
             zip --junk-paths ./${{ env.PROJECT }}-${{ env.RELEASE_TAG }}.zip
+            ./LICENSE ./README.md
             ./src/${{ env.PROJECT }}/bin/${{ env.CONFIG }}/${{ env.TARGET }}/publish/${{ env.PROJECT }}.pdb
             ./src/${{ env.PROJECT }}/bin/${{ env.CONFIG }}/${{ env.TARGET }}/publish/${{ env.PROJECT }}.dll
 
