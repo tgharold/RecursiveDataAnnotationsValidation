@@ -60,8 +60,6 @@ jobs:
             ./LICENSE ./README.md
             ./src/${{ env.PROJECT }}/bin/${{ env.CONFIG }}/${{ env.TARGET }}/publish/${{ env.PROJECT }}.pdb
             ./src/${{ env.PROJECT }}/bin/${{ env.CONFIG }}/${{ env.TARGET }}/publish/${{ env.PROJECT }}.dll
-
-        # TODO: Add a README/LICENSE to the ZIP?
           
       - name: Create Release
         id: create_release
