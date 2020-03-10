@@ -40,8 +40,9 @@ jobs:
       - name: Create Zip File
         uses: montudor/action-zip@v0.1.0
         with:
-          args:  zip --junk-paths ./${{ env.PROJECT }}-${{ github.ref }}.zip |
-            ./src/${{ env.PROJECT }}/bin/${{ env.CONFIG }}/${{ env.TARGET }}/publish/${{ env.PROJECT }}.pdb |
+          args: >
+            zip --junk-paths ./${{ env.PROJECT }}-${GITHUB_REF##*/}.zip
+            ./src/${{ env.PROJECT }}/bin/${{ env.CONFIG }}/${{ env.TARGET }}/publish/${{ env.PROJECT }}.pdb
             ./src/${{ env.PROJECT }}/bin/${{ env.CONFIG }}/${{ env.TARGET }}/publish/${{ env.PROJECT }}.dll
 
         # TODO: Add a README to the ZIP?
@@ -64,6 +65,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
-          asset_path: ./${{ env.PROJECT }}-${{ github.ref }}.zip
-          asset_name: ${{ env.PROJECT }}-${{ github.ref }}.zip
+          asset_path: ./${{ env.PROJECT }}-${GITHUB_REF##*/}.zip
+          asset_name: ${{ env.PROJECT }}-${GITHUB_REF##*/}.zip
           asset_content_type: application/zip
