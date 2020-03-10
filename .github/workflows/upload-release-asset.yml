@@ -10,6 +10,8 @@ name: Upload Release Asset
 
 env:
   PROJECT: RecursiveDataAnnotationsValidation
+  CONFIG: Release
+  TARGET: netstandard2.0
 
 jobs:
   build:
@@ -26,21 +28,22 @@ jobs:
           dotnet-version: 3.1.101
 
       - name: dotnet build
-        run: dotnet build --configuration Release
+        run: dotnet build --configuration ${{ env.CONFIG }}
 
       - name: dotnet test
-        run: dotnet test --configuration Release
+        run: dotnet test --configuration ${{ env.CONFIG }}
 
       - name: dotnet publish
         working-directory: ./src/${{ env.PROJECT }}
-        run: dotnet publish --configuration Release
+        run: dotnet publish --configuration ${{ env.CONFIG }}
 
-      - name: Create ZIP
-        working-directory: ./src/${{ env.PROJECT }}
-        run: |
-          zip --junk-paths ${{ env.PROJECT }}-${{ github.ref }}.zip |
-            bin/Release/netstandard2.0/publish/${{ env.PROJECT }}.pdb |
-            bin/Release/netstandard2.0/publish/${{ env.PROJECT }}.dll
+      - name: Create Zip File
+        uses: montudor/action-zip@v0.1.0
+        with:
+          args:  zip --junk-paths ./${{ env.PROJECT }}-${{ github.ref }}.zip |
+            ./src/${{ env.PROJECT }}/bin/${{ env.CONFIG }}/${{ env.TARGET }}/publish/${{ env.PROJECT }}.pdb |
+            ./src/${{ env.PROJECT }}/bin/${{ env.CONFIG }}/${{ env.TARGET }}/publish/${{ env.PROJECT }}.dll
+
         # TODO: Add a README to the ZIP?
           
       - name: Create Release
@@ -61,6 +64,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
-          asset_path: ./src/${{ env.PROJECT }}/${{ env.PROJECT }}-${{ github.ref }}.zip
+          asset_path: ./${{ env.PROJECT }}-${{ github.ref }}.zip
           asset_name: ${{ env.PROJECT }}-${{ github.ref }}.zip
           asset_content_type: application/zip
