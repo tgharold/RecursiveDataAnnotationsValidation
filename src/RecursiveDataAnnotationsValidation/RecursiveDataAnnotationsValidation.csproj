@@ -6,7 +6,7 @@
     <Authors>Thomas Harold</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/tgharold/RecursiveDataAnnotationsValidation</RepositoryUrl>
-    <PackageTags>dataannotation validator</PackageTags>
+    <PackageTags>dataannotation validation validator</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

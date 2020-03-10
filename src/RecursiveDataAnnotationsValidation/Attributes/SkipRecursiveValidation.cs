@@ -2,7 +2,7 @@ using System;
 
 namespace RecursiveDataAnnotationsValidation.Attributes
 {
-    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Property | AttributeTargets.Enum)]
+    [AttributeUsage(AttributeTargets.Property)]
     public class SkipRecursiveValidationAttribute : Attribute
     {
         

@@ -10,7 +10,7 @@ namespace OptionsPatternMvc.Example.Settings.Validators
         : IValidateOptions<TOptions>
         where TOptions : class
     {
-        private static readonly RecursiveDataAnnotationValidator _recursiveDataAnnotationValidator = new RecursiveDataAnnotationValidator(); 
+        private readonly RecursiveDataAnnotationValidator _recursiveDataAnnotationValidator = new RecursiveDataAnnotationValidator(); 
         
         public RecursiveDataAnnotationValidateOptions(string optionsBuilderName)
         {
