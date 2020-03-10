@@ -9,21 +9,20 @@ namespace RecursiveDataAnnotationsValidation
 {
     public class RecursiveDataAnnotationValidator : IRecursiveDataAnnotationValidator
     {
-        public bool TryValidateObjectRecursive<T>(
-            T obj, 
+        public bool TryValidateObjectRecursive(
             ValidationContext validationContext, 
             List<ValidationResult> validationResults
-            ) where T : class
+            )
         {
             return TryValidateObjectRecursive(
-                obj, 
+                validationContext.ObjectInstance, 
                 validationResults,
                 validationContext.Items
             );
         }
 
-        public bool TryValidateObjectRecursive<T>(
-            T obj, 
+        public bool TryValidateObjectRecursive(
+            object obj, 
             List<ValidationResult> validationResults, 
             IDictionary<object, object> validationContextItems = null
             )
@@ -40,7 +39,7 @@ namespace RecursiveDataAnnotationsValidation
             object obj, 
             ICollection<ValidationResult> validationResults, 
             IDictionary<object, object> validationContextItems = null
-        )
+            )
         {
             return Validator.TryValidateObject(
                 obj, 
@@ -54,8 +53,8 @@ namespace RecursiveDataAnnotationsValidation
             );
         }
 
-        private bool TryValidateObjectRecursive<T>(
-            T obj, 
+        private bool TryValidateObjectRecursive(
+            object obj, 
             ICollection<ValidationResult> validationResults, 
             ISet<object> validatedObjects, 
             IDictionary<object, object> validationContextItems = null
