@@ -4,5 +4,5 @@ Recursively validate DataAnnotations
 
 ## Build Status
 
-![.NET Core](https://github.com/tgharold/RecursiveDataAnnotationsValidation/workflows/.NET%20Core/badge.svg?branch=master)
+![.NET Core Build-Test](https://github.com/tgharold/RecursiveDataAnnotationsValidation/workflows/.NET%20Core%20Build-Test/badge.svg)
 
