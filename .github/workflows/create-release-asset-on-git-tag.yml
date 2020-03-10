@@ -1,4 +1,5 @@
 # https://github.com/actions/upload-release-asset
+# https://github.com/montudor/action-zip
 
 on:
   push:
@@ -15,10 +16,10 @@ env:
 
 jobs:
   build:
-    name: Upload Release Asset
     runs-on: ubuntu-latest
     
     steps:
+
       - name: Checkout code
         uses: actions/checkout@v2
         
@@ -59,7 +60,7 @@ jobs:
             ./src/${{ env.PROJECT }}/bin/${{ env.CONFIG }}/${{ env.TARGET }}/publish/${{ env.PROJECT }}.pdb
             ./src/${{ env.PROJECT }}/bin/${{ env.CONFIG }}/${{ env.TARGET }}/publish/${{ env.PROJECT }}.dll
 
-        # TODO: Add a README to the ZIP?
+        # TODO: Add a README/LICENSE to the ZIP?
           
       - name: Create Release
         id: create_release
