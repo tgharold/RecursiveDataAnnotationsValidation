@@ -47,7 +47,9 @@ jobs:
 
       - name: dotnet publish
         working-directory: ./src/${{ env.PROJECT }}
-        run: dotnet publish --configuration ${{ env.CONFIG }}
+        run: >
+          dotnet publish --configuration ${{ env.CONFIG }} 
+          /p:Version="${{ env.RELEASE_VERSION }}" /p:InformationalVersion="${{ env.RELEASE_VERSION }}"
 
       - name: Create Zip File
         uses: montudor/action-zip@v0.1.0
