@@ -65,6 +65,7 @@ jobs:
         working-directory: ./src/${{ env.PROJECT }}
         run: >
           dotnet pack --configuration ${{ env.CONFIG }} 
+          /p:Version="${{ env.RELEASE_VERSION }}"
 
       - name: Create Release
         id: create_release
