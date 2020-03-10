@@ -36,6 +36,14 @@ jobs:
       - name: dotnet publish
         working-directory: ./src/${{ env.PROJECT }}
         run: dotnet publish --configuration ${{ env.CONFIG }}
+        
+      - uses: rlespinasse/github-slug-action@master
+      - name: Print slug variables
+        run: |
+          echo ${{ env.GITHUB_REF_SLUG }}
+          echo ${{ env.GITHUB_HEAD_REF_SLUG }}
+          echo ${{ env.GITHUB_BASE_REF_SLUG }}
+          echo ${{ env.GITHUB_SHA_SHORT }}
 
       - name: Create Zip File
         uses: montudor/action-zip@v0.1.0
