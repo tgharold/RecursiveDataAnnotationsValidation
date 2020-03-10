@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Linq;
 using RecursiveDataAnnotationsValidation.Tests.TestModels;
 using Xunit;
 
@@ -32,6 +33,57 @@ namespace RecursiveDataAnnotationsValidation.Tests
             
             Assert.True(result);
             Assert.Empty(validationResults);
+        }
+        
+        [Fact]
+        public void Fails_for_SimpleA_BoolC()
+        {
+            var sut = new SkippedChildrenExample
+            {
+                Name = "Skipped-Children-2",
+                SimpleA = new SimpleExample
+                {
+                    IntegerA = 75124,
+                    BoolC = null, // set one of the props to null
+                    StringB = "simple-a-child-2",
+                    ExampleEnumD = ExampleEnum.ValueC
+                },
+                SimpleB = new SimpleExample
+                {
+                    BoolC = true                    
+                }
+            };
+            var validationResults = new List<ValidationResult>();
+            var result = _validator.TryValidateObjectRecursive(sut, validationResults);
+            
+            Assert.False(result);
+            Assert.NotEmpty(validationResults);
+            Assert.NotNull(validationResults
+                .FirstOrDefault(x => x.MemberNames.Contains("SimpleA.BoolC")));            
+        }
+        
+        [Fact]
+        public void Fails_for_SimpleB_missing()
+        {
+            var sut = new SkippedChildrenExample
+            {
+                Name = "Skipped-Children-2",
+                SimpleA = new SimpleExample
+                {
+                    IntegerA = 75124,
+                    BoolC = null,
+                    StringB = "simple-a-child-2",
+                    ExampleEnumD = ExampleEnum.ValueC
+                },
+                SimpleB = null // the object is missing entirely
+            };
+            var validationResults = new List<ValidationResult>();
+            var result = _validator.TryValidateObjectRecursive(sut, validationResults);
+            
+            Assert.False(result);
+            Assert.NotEmpty(validationResults);
+            Assert.NotNull(validationResults
+                .FirstOrDefault(x => x.MemberNames.Contains("SimpleB")));            
         }
     }
 }
