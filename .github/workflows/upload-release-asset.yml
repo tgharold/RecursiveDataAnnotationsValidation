@@ -8,7 +8,8 @@ on:
 
 name: Upload Release Asset
 
-# TODO: Set a variable to equal RecursiveDataAnnotationsValidation 
+env:
+  PROJECT: RecursiveDataAnnotationsValidation
 
 jobs:
   build:
@@ -31,15 +32,15 @@ jobs:
         run: dotnet test --configuration Release
 
       - name: dotnet publish
-        working-directory: ./src/RecursiveDataAnnotationsValidation
+        working-directory: ./src/${{ env.PROJECT }}
         run: dotnet publish --configuration Release
 
       - name: Create ZIP
-        working-directory: ./src/RecursiveDataAnnotationsValidation
+        working-directory: ./src/${{ env.PROJECT }}
         run: |
-          zip --junk-paths RecursiveDataAnnotationsValidation-${{ github.ref }}.zip |
-            bin/Release/netstandard2.0/publish/RecursiveDataAnnotationsValidation.pdb |
-            bin/Release/netstandard2.0/publish/RecursiveDataAnnotationsValidation.dll
+          zip --junk-paths ${{ env.PROJECT }}-${{ github.ref }}.zip |
+            bin/Release/netstandard2.0/publish/${{ env.PROJECT }}.pdb |
+            bin/Release/netstandard2.0/publish/${{ env.PROJECT }}.dll
         # TODO: Add a README to the ZIP?
           
       - name: Create Release
@@ -56,11 +57,10 @@ jobs:
       - name: Upload Release Asset
         id: upload-release-asset 
         uses: actions/upload-release-asset@v1
-        working-directory: ./src/RecursiveDataAnnotationsValidation
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
-          asset_path: ./RecursiveDataAnnotationsValidation-${{ github.ref }}.zip
-          asset_name: RecursiveDataAnnotationsValidation-${{ github.ref }}.zip
+          asset_path: ./src/${{ env.PROJECT }}/${{ env.PROJECT }}-${{ github.ref }}.zip
+          asset_name: ${{ env.PROJECT }}-${{ github.ref }}.zip
           asset_content_type: application/zip
