@@ -9,13 +9,33 @@ namespace RecursiveDataAnnotationsValidation
 {
     public class RecursiveDataAnnotationValidator : IRecursiveDataAnnotationValidator
     {
+        /* Notes:
+         *
+         * Background information of why we don't use ValidationContext.ObjectInstance here, even though it is tempting.
+         *
+         * https://jeffhandley.com/2009-10-17/validator
+         *
+         * It’s important to note that for cross-field validation, relying on the ObjectInstance comes with a caveat.
+         * It’s possible that the end user has entered a value for a property that could not be set—for instance
+         * specifying “ABC” for a numeric field.  In cases like that, asking the instance for that numeric property
+         * will of course not give you the “ABC” value that the user has entered, thus the object’s other properties
+         * are in an indeterminate state.  But even so, we’ve found that it’s extremely valuable to provide this object
+         * instance to the validation attributes.
+         *
+         * See also:
+         * 
+         * https://github.com/dotnet/corefx/blob/8b04d0a18a49448ff7c8ee63239cd6d2a2be7e14/src/System.ComponentModel.Annotations/src/System/ComponentModel/DataAnnotations/ValidationContext.cs
+         * 
+         */
+        
         public bool TryValidateObjectRecursive(
+            object obj, 
             ValidationContext validationContext, 
             List<ValidationResult> validationResults
             )
         {
             return TryValidateObjectRecursive(
-                validationContext.ObjectInstance, 
+                obj, 
                 validationResults,
                 validationContext.Items
             );

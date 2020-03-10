@@ -6,6 +6,7 @@ namespace RecursiveDataAnnotationsValidation
     public interface IRecursiveDataAnnotationValidator
     {
         bool TryValidateObjectRecursive(
+            object obj,
             ValidationContext validationContext,
             List<ValidationResult> validationResults
             );

@@ -26,7 +26,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
                 var validationContext = new ValidationContext(sut);
                 var validationResults = new List<ValidationResult>();
-                var result = _validator.TryValidateObjectRecursive(validationContext, validationResults);
+                var result = _validator.TryValidateObjectRecursive(sut, validationContext, validationResults);
             
                 Assert.True(result);
                 Assert.Empty(validationResults);
@@ -46,7 +46,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 const string fieldName = nameof(SimpleExample.IntegerA);
                 var validationContext = new ValidationContext(sut);
                 var validationResults = new List<ValidationResult>();
-                var result = _validator.TryValidateObjectRecursive(validationContext, validationResults);
+                var result = _validator.TryValidateObjectRecursive(sut, validationContext, validationResults);
             
                 Assert.False(result);
                 Assert.NotEmpty(validationResults);
