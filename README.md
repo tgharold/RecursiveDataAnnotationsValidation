@@ -28,7 +28,7 @@ The [`[SkipRecursiveValidation]`](https://github.com/tgharold/RecursiveDataAnnot
 
 ## Build Status
 
-![.NET Core Build-Test](https://github.com/tgharold/RecursiveDataAnnotationsValidation/workflows/.NET%20Core%20Build-Test/badge.svg)
+![.NET Core](https://github.com/tgharold/RecursiveDataAnnotationsValidation/workflows/.NET%20Core/badge.svg)
 
 ## Nuget Page
 
