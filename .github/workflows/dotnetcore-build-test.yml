@@ -10,6 +10,7 @@ on:
 
 jobs:
 
+  # note: changing build/name breaks the branch protection
   build:
     name: Build-Test
 
