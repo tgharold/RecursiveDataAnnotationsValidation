@@ -99,3 +99,9 @@ jobs:
           asset_path: ./src/${{ env.PROJECT }}/bin/${{ env.CONFIG }}/${{ env.PROJECT }}.${{ env.RELEASE_VERSION }}.nupkg
           asset_name: ${{ env.PROJECT }}.${{ env.RELEASE_VERSION }}.nupkg
           asset_content_type: application/zip
+
+      - name: Publish on nuget.org
+        run: >
+          dotnet nuget push ./src/${{ env.PROJECT }}/bin/${{ env.CONFIG }}/${{ env.PROJECT }}.${{ env.RELEASE_VERSION }}.nupkg 
+          -k ${{ secrets.NugetApiKey }} 
+          -s https://api.nuget.org/v3/index.json
