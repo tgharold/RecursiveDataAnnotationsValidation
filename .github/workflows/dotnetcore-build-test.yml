@@ -1,4 +1,4 @@
-name: .NET Core Build-Test
+name: .NET Core
 
 on:
 
