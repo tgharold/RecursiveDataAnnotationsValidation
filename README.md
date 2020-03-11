@@ -2,9 +2,15 @@
 
 Allows recursive validation of sub-objects in a class when using [DataAnnotations validation](https://docs.microsoft.com/en-us/aspnet/core/mvc/models/validation?view=aspnetcore-3.1) (also known as Attribute Validation).  The current version of .NET Core's attribute validation does not handle objects within objects (or collections of objects).  Therefore it is necessary to add some glue code to recurse through the object graph.
 
-## Nuget package
+## Installation
 
-TODO: (in progress)
+### .NET Core
+
+    $ dotnet add package RecursiveDataAnnotationsValidation
+
+### Package Manager
+
+    PM> Install-Package RecursiveDataAnnotationsValidation
 
 ## Usage
 
@@ -22,7 +28,11 @@ The [`[SkipRecursiveValidation]`](https://github.com/tgharold/RecursiveDataAnnot
 
 ## Build Status
 
-![.NET Core Build-Test](https://github.com/tgharold/RecursiveDataAnnotationsValidation/workflows/.NET%20Core%20Build-Test/badge.svg) ![Create Release on Git Tag](https://github.com/tgharold/RecursiveDataAnnotationsValidation/workflows/Create%20Release%20on%20Git%20Tag/badge.svg)
+![.NET Core Build-Test](https://github.com/tgharold/RecursiveDataAnnotationsValidation/workflows/.NET%20Core%20Build-Test/badge.svg)
+
+## Nuget Page
+
+https://www.nuget.org/packages/RecursiveDataAnnotationsValidation/
 
 ## Legacy
 
