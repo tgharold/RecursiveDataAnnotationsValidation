@@ -9,6 +9,10 @@
     <PackageTags>dataannotation validation validator</PackageTags>
   </PropertyGroup>
 
+   <PropertyGroup>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="System.ComponentModel.Annotations" Version="4.7.0" />
   </ItemGroup>
