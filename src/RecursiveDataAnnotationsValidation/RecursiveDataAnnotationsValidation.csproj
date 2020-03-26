@@ -9,8 +9,9 @@
     <PackageTags>dataannotation validation validator</PackageTags>
   </PropertyGroup>
 
-   <PropertyGroup>
+  <PropertyGroup>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>

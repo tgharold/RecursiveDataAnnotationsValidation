@@ -7,8 +7,14 @@ using RecursiveDataAnnotationsValidation.Extensions;
 
 namespace RecursiveDataAnnotationsValidation
 {
+    /// <summary>Recursive validator for DataAnnotation attribute-based validation.</summary>
     public class RecursiveDataAnnotationValidator : IRecursiveDataAnnotationValidator
     {
+        /// <summary>Runs validation on an object.</summary>
+        /// <param name="obj">The object being validated.</param>
+        /// <param name="validationContext">Validation context.</param>
+        /// <param name="validationResults">A collection that will be populated if validation errors occur.</param>
+        /// <returns>Returns true if all validation passes.</returns>
         public bool TryValidateObjectRecursive(
             object obj,  // see Note 1 
             ValidationContext validationContext, 
@@ -22,6 +28,11 @@ namespace RecursiveDataAnnotationsValidation
             );
         }
 
+        /// <summary>Runs validation on an object.</summary>
+        /// <param name="obj">The object being validated.</param>
+        /// <param name="validationResults">A collection that will be populated if validation errors occur.</param>
+        /// <param name="validationContextItems">Validation context items.</param>
+        /// <returns>Returns true if all validation passes.</returns>
         public bool TryValidateObjectRecursive(
             object obj, 
             List<ValidationResult> validationResults, 
