@@ -117,23 +117,34 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: release/${{ env.SOLUTION_NAME }}-${{ env.RELEASE_TAG }}.zip
+          asset_path: release/${{ env.PROJECT }}-${{ env.RELEASE_TAG }}.zip
           asset_name: ${{ env.PROJECT }}-${{ env.RELEASE_VERSION }}.zip
           asset_content_type: application/zip      
       
-      - name: Attach Nuget Package to Release
-        id: upload-release-asset-nuget 
+      - name: Attach .nupkg file to Release
+        id: upload-release-asset-nupkg 
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./src/${{ env.PROJECT }}/bin/${{ env.CONFIG }}/${{ env.PROJECT }}.${{ env.RELEASE_VERSION }}.nupkg
+          asset_path: release/${{ env.PROJECT }}-${{ env.RELEASE_VERSION }}.nupkg 
           asset_name: ${{ env.PROJECT }}.${{ env.RELEASE_VERSION }}.nupkg
+          asset_content_type: application/zip
+
+      - name: Attach .snupkg file to Release
+        id: upload-release-asset-snupkg
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/${{ env.PROJECT }}-${{ env.RELEASE_VERSION }}.snupkg
+          asset_name: ${{ env.PROJECT }}.${{ env.RELEASE_VERSION }}.snupkg
           asset_content_type: application/zip
 
       - name: Publish on nuget.org
         run: >
-          dotnet nuget push ./src/${{ env.PROJECT }}/bin/${{ env.CONFIG }}/${{ env.PROJECT }}.${{ env.RELEASE_VERSION }}.nupkg 
+          dotnet nuget push '**/*.nupkg' 
           -k ${{ secrets.NugetApiKey }} 
           -s https://api.nuget.org/v3/index.json
