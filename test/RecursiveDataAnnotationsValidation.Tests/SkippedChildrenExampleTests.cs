@@ -21,12 +21,9 @@ namespace RecursiveDataAnnotationsValidation.Tests
                     IntegerA = 75123,
                     BoolC = false,
                     StringB = "simple-a-child-1",
-                    ExampleEnumD = ExampleEnum.ValueC
+                    ExampleEnumD = ExampleEnum.ValueB
                 },
-                SimpleB = new SimpleExample
-                {
-                    
-                }
+                SimpleB = new SimpleExample(),
             };
             var validationResults = new List<ValidationResult>();
             var result = _sut.TryValidateObjectRecursive(model, validationResults);
@@ -43,10 +40,10 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Name = "Skipped-Children-2",
                 SimpleA = new SimpleExample
                 {
-                    IntegerA = 75124,
+                    IntegerA = 7124,
                     BoolC = null, // set one of the props to null
                     StringB = "simple-a-child-2",
-                    ExampleEnumD = ExampleEnum.ValueC
+                    ExampleEnumD = ExampleEnum.ValueA
                 },
                 SimpleB = new SimpleExample
                 {
@@ -70,7 +67,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Name = "Skipped-Children-2",
                 SimpleA = new SimpleExample
                 {
-                    IntegerA = 75124,
+                    IntegerA = 7524,
                     BoolC = null,
                     StringB = "simple-a-child-2",
                     ExampleEnumD = ExampleEnum.ValueC

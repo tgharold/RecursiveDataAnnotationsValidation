@@ -17,11 +17,11 @@ namespace RecursiveDataAnnotationsValidation.Tests
         {
             var recursiveModel = new RecursionExample
             {
-                Name = "Recursion1",
+                Name = "Recursion1-pass",
                 BooleanA = false,
                 Recursion = new RecursionExample
                 {
-                    Name = "Recursion1.Inner1",
+                    Name = "Recursion1-pass.Inner1",
                     BooleanA = true,
                     Recursion = null
                 }
@@ -47,11 +47,11 @@ namespace RecursiveDataAnnotationsValidation.Tests
         {
             var recursiveModel = new RecursionExample
             {
-                Name = "Recursion1",
+                Name = "Recursion1-fail",
                 BooleanA = false,
                 Recursion = new RecursionExample
                 {
-                    Name = "Recursion1.Inner1",
+                    Name = "Recursion1-fail.Inner1",
                     BooleanA = null,
                     Recursion = null
                 }

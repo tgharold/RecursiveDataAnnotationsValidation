@@ -15,8 +15,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
         {
             var model = new EnumerableExample
             {
-                Name = "Passes all",
-                Age = 75,
+                Name = "Passes all, no children nodes",
+                Age = 18,
                 Items = new List<ItemExample>(),
                 ItemsList = new List<ItemExample>(),
                 ItemsCollection = new List<ItemExample>(),
@@ -34,8 +34,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
         {
             var model = new EnumerableExample
             {
-                Name = "Passes all with children",
-                Age = 75,
+                Name = "Passes all with children nodes",
+                Age = 128,
                 Items = new List<ItemExample>
                 {
                     new ItemExample
@@ -43,7 +43,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                         Name = "Child 1",
                         SimpleA = new SimpleExample
                         {
-                            IntegerA = 125,
+                            IntegerA = 1225,
                             StringB = "child-1-stringB",
                             BoolC = true,
                             ExampleEnumD = ExampleEnum.ValueC
@@ -126,7 +126,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             var model = new EnumerableExample
             {
                 Name = "Fails_on_Items_Child2_SimpleA_BoolC",
-                Age = 75,
+                Age = 6,
                 Items = new List<ItemExample>
                 {
                     new ItemExample
@@ -145,7 +145,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                         Name = "Child 2",
                         SimpleA = new SimpleExample
                         {
-                            IntegerA = 15,
+                            IntegerA = 153,
                             StringB = "child-2-string-abc",
                             BoolC = null, // failure
                             ExampleEnumD = ExampleEnum.ValueA
@@ -165,7 +165,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
         private readonly EnumerableExample _multipleFailureModel = new EnumerableExample
         {
             Name = "Multiple failures",
-            Age = 75,
+            Age = -5,
             Items = new List<ItemExample>
             {
                 new ItemExample
@@ -209,7 +209,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                     Name = "Child 0L",
                     SimpleA = new SimpleExample
                     {
-                        IntegerA = 123,
+                        IntegerA = 1423,
                         StringB = "child-0L-stringB",
                         BoolC = true,
                         ExampleEnumD = ExampleEnum.ValueC
@@ -288,6 +288,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
         };
         
         [Theory]
+        [InlineData("Age")]
         [InlineData("Items[1].SimpleA.BoolC")]
         [InlineData("ItemsCollection[1].Name")]
         [InlineData("ItemsCollection[0].SimpleA.ExampleEnumD")]
