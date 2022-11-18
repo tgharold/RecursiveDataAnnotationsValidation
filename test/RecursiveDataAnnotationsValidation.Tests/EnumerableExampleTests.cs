@@ -34,7 +34,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
         {
             var model = new EnumerableExample
             {
-                Name = "Passes all",
+                Name = "Passes all with children",
                 Age = 75,
                 Items = new List<ItemExample>
                 {
@@ -125,7 +125,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
         {
             var model = new EnumerableExample
             {
-                Name = "Passes all",
+                Name = "Fails_on_Items_Child2_SimpleA_BoolC",
                 Age = 75,
                 Items = new List<ItemExample>
                 {
@@ -159,23 +159,22 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
             Assert.False(result);
             Assert.NotEmpty(validationResults);
-            Assert.NotNull(validationResults
-                .FirstOrDefault(x => x.MemberNames.Contains("Items.SimpleA.BoolC")));
+            AssertThereIsAnErrorForMemberName("Items[1].SimpleA.BoolC", validationResults);
         }
         
         private readonly EnumerableExample _multipleFailureModel = new EnumerableExample
         {
-            Name = "Passes all",
+            Name = "Multiple failures",
             Age = 75,
             Items = new List<ItemExample>
             {
                 new ItemExample
                 {
-                    Name = "Child 3E",
+                    Name = "Child 0E",
                     SimpleA = new SimpleExample
                     {
                         IntegerA = 65,
-                        StringB = "child-3E-stringB",
+                        StringB = "child-0E-stringB",
                         BoolC = true,
                         ExampleEnumD = ExampleEnum.ValueB
                     }
@@ -207,22 +206,22 @@ namespace RecursiveDataAnnotationsValidation.Tests
             {
                 new ItemExample
                 {
-                    Name = "Child 1L",
+                    Name = "Child 0L",
                     SimpleA = new SimpleExample
                     {
                         IntegerA = 123,
-                        StringB = "child-1L-stringB",
+                        StringB = "child-0L-stringB",
                         BoolC = true,
                         ExampleEnumD = ExampleEnum.ValueC
                     }
                 },
                 new ItemExample
                 {
-                    Name = "Child 3L",
+                    Name = "Child 1L",
                     SimpleA = new SimpleExample
                     {
                         IntegerA = 13,
-                        StringB = "child-3L-stringB",
+                        StringB = "child-1L-stringB",
                         BoolC = true,
                         ExampleEnumD = null
                     }
@@ -243,11 +242,11 @@ namespace RecursiveDataAnnotationsValidation.Tests
             {
                 new ItemExample
                 {
-                    Name = "Child 1C",
+                    Name = "Child 0C",
                     SimpleA = new SimpleExample
                     {
                         IntegerA = null,
-                        StringB = "child-1C-stringB",
+                        StringB = "child-0C-stringB",
                         BoolC = true,
                         ExampleEnumD = null
                     }
@@ -258,8 +257,30 @@ namespace RecursiveDataAnnotationsValidation.Tests
                     SimpleA = new SimpleExample
                     {
                         IntegerA = null,
-                        StringB = "child-2C-string-abc",
+                        StringB = "child-1C-string-abc",
                         BoolC = false,
+                        ExampleEnumD = ExampleEnum.ValueA
+                    }
+                },
+                new ItemExample
+                {
+                    Name = "Child 2C",
+                    SimpleA = new SimpleExample
+                    {
+                        IntegerA = 250,
+                        StringB = "child-2C-stringB",
+                        BoolC = null,
+                        ExampleEnumD = null
+                    }
+                },
+                new ItemExample
+                {
+                    Name = "Child 3C",
+                    SimpleA = new SimpleExample
+                    {
+                        IntegerA = null,
+                        StringB = null,
+                        BoolC = true,
                         ExampleEnumD = ExampleEnum.ValueA
                     }
                 },
@@ -267,18 +288,30 @@ namespace RecursiveDataAnnotationsValidation.Tests
         };
         
         [Theory]
-        [InlineData("Items.SimpleA.BoolC")]
-        [InlineData("ItemsCollection.Name")]
-        [InlineData("ItemsCollection.SimpleA.ExampleEnumD")]
-        [InlineData("ItemsCollection.SimpleA.IntegerA")]
-        [InlineData("ItemsList.SimpleA.ExampleEnumD")]
-        public void Multiple_failures(string expectedMemberName)
+        [InlineData("Items[1].SimpleA.BoolC")]
+        [InlineData("ItemsCollection[1].Name")]
+        [InlineData("ItemsCollection[0].SimpleA.ExampleEnumD")]
+        [InlineData("ItemsCollection[1].SimpleA.IntegerA")]
+        [InlineData("ItemsCollection[2].SimpleA.BoolC")]
+        [InlineData("ItemsCollection[2].SimpleA.ExampleEnumD")]
+        [InlineData("ItemsCollection[3].SimpleA.IntegerA")]
+        [InlineData("ItemsCollection[3].SimpleA.StringB")]
+        [InlineData("ItemsList[1].SimpleA.ExampleEnumD")]
+        public void Multiple_failures_contains_expected_memberName(string expectedMemberName)
         {
             var validationResults = new List<ValidationResult>();
             var result = _sut.TryValidateObjectRecursive(_multipleFailureModel, validationResults);
 
             Assert.False(result);
             Assert.NotEmpty(validationResults);
+            AssertThereIsAnErrorForMemberName(expectedMemberName, validationResults);
+        }
+
+        private void AssertThereIsAnErrorForMemberName(
+            string expectedMemberName,
+            IEnumerable<ValidationResult> validationResults
+            )
+        {
             var memberNames = validationResults
                 .SelectMany(x => x.MemberNames)
                 .OrderBy(x => x)
