@@ -11,12 +11,12 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// <summary>Tests that use the method which takes a ValidationContext.</summary>
         public class ValidationContextTests
         {
-            private readonly IRecursiveDataAnnotationValidator _validator = new RecursiveDataAnnotationValidator();
+            private readonly IRecursiveDataAnnotationValidator _sut = new RecursiveDataAnnotationValidator();
             
             [Fact]
             public void Pass_all_validation()
             {
-                var sut = new SimpleExample
+                var model = new SimpleExample
                 {
                     IntegerA = 100,
                     StringB = "test-100",
@@ -24,9 +24,9 @@ namespace RecursiveDataAnnotationsValidation.Tests
                     ExampleEnumD = ExampleEnum.ValueB
                 };
 
-                var validationContext = new ValidationContext(sut);
+                var validationContext = new ValidationContext(model);
                 var validationResults = new List<ValidationResult>();
-                var result = _validator.TryValidateObjectRecursive(sut, validationContext, validationResults);
+                var result = _sut.TryValidateObjectRecursive(model, validationContext, validationResults);
             
                 Assert.True(result);
                 Assert.Empty(validationResults);
@@ -35,7 +35,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             [Fact]
             public void Indicate_that_IntegerA_is_missing()
             {
-                var sut = new SimpleExample
+                var model = new SimpleExample
                 {
                     IntegerA = null,
                     StringB = "test-101",
@@ -44,9 +44,9 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 };
             
                 const string fieldName = nameof(SimpleExample.IntegerA);
-                var validationContext = new ValidationContext(sut);
+                var validationContext = new ValidationContext(model);
                 var validationResults = new List<ValidationResult>();
-                var result = _validator.TryValidateObjectRecursive(sut, validationContext, validationResults);
+                var result = _sut.TryValidateObjectRecursive(model, validationContext, validationResults);
             
                 Assert.False(result);
                 Assert.NotEmpty(validationResults);

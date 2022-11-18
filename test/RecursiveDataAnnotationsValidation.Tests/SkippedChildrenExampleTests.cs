@@ -8,12 +8,12 @@ namespace RecursiveDataAnnotationsValidation.Tests
 {
     public class SkippedChildrenExampleTests
     {
-        private readonly IRecursiveDataAnnotationValidator _validator = new RecursiveDataAnnotationValidator();
+        private readonly IRecursiveDataAnnotationValidator _sut = new RecursiveDataAnnotationValidator();
 
         [Fact]
         public void Passes_all_validation()
         {
-            var sut = new SkippedChildrenExample
+            var model = new SkippedChildrenExample
             {
                 Name = "Skipped-Children-1",
                 SimpleA = new SimpleExample
@@ -29,7 +29,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 }
             };
             var validationResults = new List<ValidationResult>();
-            var result = _validator.TryValidateObjectRecursive(sut, validationResults);
+            var result = _sut.TryValidateObjectRecursive(model, validationResults);
             
             Assert.True(result);
             Assert.Empty(validationResults);
@@ -38,7 +38,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
         [Fact]
         public void Fails_for_SimpleA_BoolC()
         {
-            var sut = new SkippedChildrenExample
+            var model = new SkippedChildrenExample
             {
                 Name = "Skipped-Children-2",
                 SimpleA = new SimpleExample
@@ -54,7 +54,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 }
             };
             var validationResults = new List<ValidationResult>();
-            var result = _validator.TryValidateObjectRecursive(sut, validationResults);
+            var result = _sut.TryValidateObjectRecursive(model, validationResults);
             
             Assert.False(result);
             Assert.NotEmpty(validationResults);
@@ -65,7 +65,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
         [Fact]
         public void Fails_for_SimpleB_missing()
         {
-            var sut = new SkippedChildrenExample
+            var model = new SkippedChildrenExample
             {
                 Name = "Skipped-Children-2",
                 SimpleA = new SimpleExample
@@ -78,7 +78,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 SimpleB = null // the object is missing entirely
             };
             var validationResults = new List<ValidationResult>();
-            var result = _validator.TryValidateObjectRecursive(sut, validationResults);
+            var result = _sut.TryValidateObjectRecursive(model, validationResults);
             
             Assert.False(result);
             Assert.NotEmpty(validationResults);
