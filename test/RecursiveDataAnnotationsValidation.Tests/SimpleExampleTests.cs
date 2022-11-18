@@ -54,7 +54,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
         {
             var model = new SimpleExample
             {
-                IntegerA = 102,
+                IntegerA = 3102,
                 StringB = null,
                 BoolC = true,
                 ExampleEnumD = ExampleEnum.ValueA

@@ -16,7 +16,7 @@ namespace Benchmark
         private static readonly EnumerableExample EnumerableExamplePassesAllValidationNoChildren = new EnumerableExample
         {
             Name = "Passes all",
-            Age = 75,
+            Age = 65,
             Items = new List<ItemExample>(),
             ItemsList = new List<ItemExample>(),
             ItemsCollection = new List<ItemExample>(),
@@ -35,7 +35,7 @@ namespace Benchmark
             new EnumerableExample
             {
                 Name = "Passes all",
-                Age = 75,
+                Age = 52,
                 Items = new List<ItemExample>
                 {
                     new ItemExample
@@ -43,7 +43,7 @@ namespace Benchmark
                         Name = "Child 1",
                         SimpleA = new SimpleExample
                         {
-                            IntegerA = 125,
+                            IntegerA = 521,
                             StringB = "child-1-stringB",
                             BoolC = true,
                             ExampleEnumD = ExampleEnum.ValueC
@@ -79,7 +79,7 @@ namespace Benchmark
                         Name = "Child 2L",
                         SimpleA = new SimpleExample
                         {
-                            IntegerA = 75,
+                            IntegerA = 725,
                             StringB = "child-2L-string-abc",
                             BoolC = false,
                             ExampleEnumD = ExampleEnum.ValueA
@@ -157,7 +157,7 @@ namespace Benchmark
 
         private static readonly SimpleExample SimpleExamplePassesAllValidation = new SimpleExample
         {
-            IntegerA = 100,
+            IntegerA = -1500,
             StringB = "test-100",
             BoolC = true,
             ExampleEnumD = ExampleEnum.ValueB
@@ -206,7 +206,7 @@ namespace Benchmark
                 {
                     StringB = "simple B pass-all",
                     BoolC = true,
-                    IntegerA = 95,
+                    IntegerA = 954,
                     ExampleEnumD = ExampleEnum.ValueA,
                 },
             };
