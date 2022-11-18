@@ -52,20 +52,24 @@ jobs:
           dotnet publish --configuration ${{ env.CONFIG }} 
           /p:Version="${{ env.RELEASE_VERSION }}" /p:InformationalVersion="${{ env.RELEASE_VERSION }}"
 
-      - name: Create Zip File
-        uses: montudor/action-zip@v1.0.0
-        with:
-          args: >
-            zip --junk-paths ./${{ env.PROJECT }}-${{ env.RELEASE_TAG }}.zip
-            ./LICENSE ./README.md
-            ./src/${{ env.PROJECT }}/bin/${{ env.CONFIG }}/${{ env.TARGET }}/publish/${{ env.PROJECT }}.pdb
-            ./src/${{ env.PROJECT }}/bin/${{ env.CONFIG }}/${{ env.TARGET }}/publish/${{ env.PROJECT }}.dll
-          
       - name: dotnet pack
         working-directory: ./src/${{ env.PROJECT }}
         run: >
-          dotnet pack --configuration ${{ env.CONFIG }} 
+          dotnet pack 
+          --configuration ${{ env.CONFIG }} 
           /p:Version="${{ env.RELEASE_VERSION }}"
+          --include-symbols
+          --output artifacts/
+          
+      - name: Inspect artifacts directory
+        run: dir artifacts/          
+
+      - name: Archive artifacts directory
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.PROJECT }}.artifacts.${{ env.RELEASE_VERSION }}
+          path: |
+            artifacts/
 
       - name: Create Release
         id: create_release
@@ -77,21 +81,35 @@ jobs:
           release_name: Release ${{ github.ref }}
           draft: false
           prerelease: true
-      
-      # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, 
-      # which include a `upload_url`. See this blog post for more info: 
-      # https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
-      - name: Attach Zip File to Release
-        id: upload-release-asset-zip 
+
+      - name: Create Release Zip File
+        uses: vimtor/action-zip@v1
+        with:
+          files: LICENSE README.md artifacts/
+          recursive: true
+          dest: release/${{ env.PROJECT }}-${{ env.RELEASE_TAG }}.zip
+
+      - name: Inspect release directory
+        run: dir release/
+        
+      - name: Archive release directory
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.PROJECT }}.release.${{ env.RELEASE_TAG }}
+          path: |
+            release/        
+
+      - name: Attach Zip to GitHub Release
+        if: ${{ env.RELEASE_CREATE }}
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }} 
-          asset_path: ./${{ env.PROJECT }}-${{ env.RELEASE_TAG }}.zip
-          asset_name: ${{ env.PROJECT }}-${{ env.RELEASE_TAG }}.zip
-          asset_content_type: application/zip
-
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/${{ env.SOLUTION_NAME }}-${{ env.RELEASE_TAG }}.zip
+          asset_name: ${{ env.PROJECT }}-${{ env.RELEASE_VERSION }}.zip
+          asset_content_type: application/zip      
+      
       - name: Attach Nuget Package to Release
         id: upload-release-asset-nuget 
         uses: actions/upload-release-asset@v1
