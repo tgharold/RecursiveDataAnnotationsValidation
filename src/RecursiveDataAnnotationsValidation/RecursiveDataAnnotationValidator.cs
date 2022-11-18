@@ -98,10 +98,12 @@ namespace RecursiveDataAnnotationsValidation
                         continue;
                     
                     case IEnumerable asEnumerable:
+                        var arrayIndex = -1;
                         foreach (var item in asEnumerable)
                         {
-                            //NOTE: This does not tell you which item in the IEnumerable<T> failed
-                            //Possibly, should have a separate case for Array/Dictionary
+                            arrayIndex++;
+
+                            //NOTE: Possibly should have a separate case for Dictionary which reports on the key
                             
                             if (item == null) continue;
                             nestedResults = new List<ValidationResult>();
@@ -119,7 +121,9 @@ namespace RecursiveDataAnnotationsValidation
                                     validationResults.Add(
                                     new ValidationResult(
                                         validationResult.ErrorMessage, 
-                                        validationResult.MemberNames.Select(x => property1.Name + '.' + x)
+                                        validationResult.MemberNames
+                                            .Select(x => $"{property1.Name}[{arrayIndex}].{x}")
+                                            .ToList()
                                         ));
                                 }
                             }
