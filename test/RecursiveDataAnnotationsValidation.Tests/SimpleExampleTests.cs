@@ -8,12 +8,12 @@ namespace RecursiveDataAnnotationsValidation.Tests
 {
     public class SimpleExampleTests
     {
-        private readonly IRecursiveDataAnnotationValidator _validator = new RecursiveDataAnnotationValidator();
+        private readonly IRecursiveDataAnnotationValidator _sut = new RecursiveDataAnnotationValidator();
 
         [Fact]
         public void Passes_all_validation()
         {
-            var sut = new SimpleExample
+            var model = new SimpleExample
             {
                 IntegerA = 100,
                 StringB = "test-100",
@@ -22,7 +22,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             };
             
             var validationResults = new List<ValidationResult>();
-            var result = _validator.TryValidateObjectRecursive(sut, validationResults);
+            var result = _sut.TryValidateObjectRecursive(model, validationResults);
             
             Assert.True(result);
             Assert.Empty(validationResults);
@@ -31,7 +31,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
         [Fact]
         public void Indicate_that_IntegerA_is_missing()
         {
-            var sut = new SimpleExample
+            var model = new SimpleExample
             {
                 IntegerA = null,
                 StringB = "test-101",
@@ -41,7 +41,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             
             const string fieldName = nameof(SimpleExample.IntegerA);
             var validationResults = new List<ValidationResult>();
-            var result = _validator.TryValidateObjectRecursive(sut, validationResults);
+            var result = _sut.TryValidateObjectRecursive(model, validationResults);
             
             Assert.False(result);
             Assert.NotEmpty(validationResults);
@@ -52,7 +52,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
         [Fact]
         public void Indicate_that_StringB_is_missing()
         {
-            var sut = new SimpleExample
+            var model = new SimpleExample
             {
                 IntegerA = 102,
                 StringB = null,
@@ -62,7 +62,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             
             const string fieldName = nameof(SimpleExample.StringB);
             var validationResults = new List<ValidationResult>();
-            var result = _validator.TryValidateObjectRecursive(sut, validationResults);
+            var result = _sut.TryValidateObjectRecursive(model, validationResults);
             
             Assert.False(result);
             Assert.NotEmpty(validationResults);
@@ -73,7 +73,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
         [Fact]
         public void Indicate_that_StringB_and_BoolC_are_missing()
         {
-            var sut = new SimpleExample
+            var model = new SimpleExample
             {
                 IntegerA = 102,
                 StringB = null,
@@ -81,7 +81,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             };
             
             var validationResults = new List<ValidationResult>();
-            var result = _validator.TryValidateObjectRecursive(sut, validationResults);
+            var result = _sut.TryValidateObjectRecursive(model, validationResults);
             
             Assert.False(result);
             Assert.NotEmpty(validationResults);
@@ -94,7 +94,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
         [Fact]
         public void Indicate_that_IntegerA_and_ExampleEnumD_are_missing()
         {
-            var sut = new SimpleExample
+            var model = new SimpleExample
             {
                 IntegerA = null,
                 StringB = "test-106",
@@ -103,7 +103,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             };
             
             var validationResults = new List<ValidationResult>();
-            var result = _validator.TryValidateObjectRecursive(sut, validationResults);
+            var result = _sut.TryValidateObjectRecursive(model, validationResults);
             
             Assert.False(result);
             Assert.NotEmpty(validationResults);

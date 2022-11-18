@@ -8,14 +8,14 @@ namespace RecursiveDataAnnotationsValidation.Tests
 {
     public class RecursionExampleTests
     {
-        private readonly IRecursiveDataAnnotationValidator _validator = new RecursiveDataAnnotationValidator();
+        private readonly IRecursiveDataAnnotationValidator _sut = new RecursiveDataAnnotationValidator();
         
         // Verify that we can recursively validate, but avoid infinite loops
         
         [Fact]
         public void Passes_all_validation()
         {
-            var recursion = new RecursionExample
+            var recursiveModel = new RecursionExample
             {
                 Name = "Recursion1",
                 BooleanA = false,
@@ -26,17 +26,17 @@ namespace RecursiveDataAnnotationsValidation.Tests
                     Recursion = null
                 }
             };
-            recursion.Recursion.Recursion = recursion;
+            recursiveModel.Recursion.Recursion = recursiveModel;
             
-            var sut = new RecursionExample
+            var model = new RecursionExample
             {
                 Name = "SUT",
                 BooleanA = true,
-                Recursion = recursion
+                Recursion = recursiveModel
             };
             
             var validationResults = new List<ValidationResult>();
-            var result = _validator.TryValidateObjectRecursive(sut, validationResults);
+            var result = _sut.TryValidateObjectRecursive(model, validationResults);
             
             Assert.True(result);
             Assert.Empty(validationResults);
@@ -45,7 +45,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
         [Fact]
         public void Fails_because_inner1_boolean_is_null()
         {
-            var recursion = new RecursionExample
+            var recursiveModel = new RecursionExample
             {
                 Name = "Recursion1",
                 BooleanA = false,
@@ -56,17 +56,17 @@ namespace RecursiveDataAnnotationsValidation.Tests
                     Recursion = null
                 }
             };
-            recursion.Recursion.Recursion = recursion;
+            recursiveModel.Recursion.Recursion = recursiveModel;
             
-            var sut = new RecursionExample
+            var model = new RecursionExample
             {
                 Name = "SUT",
                 BooleanA = true,
-                Recursion = recursion
+                Recursion = recursiveModel
             };
             
             var validationResults = new List<ValidationResult>();
-            var result = _validator.TryValidateObjectRecursive(sut, validationResults);
+            var result = _sut.TryValidateObjectRecursive(model, validationResults);
             
             Assert.False(result);
             Assert.NotEmpty(validationResults);
