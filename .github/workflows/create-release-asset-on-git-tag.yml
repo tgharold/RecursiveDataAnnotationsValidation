@@ -128,7 +128,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/${{ env.PROJECT }}-${{ env.RELEASE_VERSION }}.nupkg 
+          asset_path: artifacts/${{ env.PROJECT }}.${{ env.RELEASE_VERSION }}.nupkg 
           asset_name: ${{ env.PROJECT }}.${{ env.RELEASE_VERSION }}.nupkg
           asset_content_type: application/zip
 
@@ -139,7 +139,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/${{ env.PROJECT }}-${{ env.RELEASE_VERSION }}.snupkg
+          asset_path: artifacts/${{ env.PROJECT }}.${{ env.RELEASE_VERSION }}.snupkg
           asset_name: ${{ env.PROJECT }}.${{ env.RELEASE_VERSION }}.snupkg
           asset_content_type: application/zip
 
