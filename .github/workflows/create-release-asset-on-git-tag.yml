@@ -121,25 +121,25 @@ jobs:
           asset_name: ${{ env.PROJECT }}-${{ env.RELEASE_VERSION }}.zip
           asset_content_type: application/zip      
       
-      - name: Attach .nupkg file to Release
+      - name: Attach .nupkg file to GitHub Release
         id: upload-release-asset-nupkg 
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: release/${{ env.PROJECT }}-${{ env.RELEASE_VERSION }}.nupkg 
+          asset_path: artifacts/${{ env.PROJECT }}-${{ env.RELEASE_VERSION }}.nupkg 
           asset_name: ${{ env.PROJECT }}.${{ env.RELEASE_VERSION }}.nupkg
           asset_content_type: application/zip
 
-      - name: Attach .snupkg file to Release
+      - name: Attach .snupkg file to GitHub Release
         id: upload-release-asset-snupkg
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: release/${{ env.PROJECT }}-${{ env.RELEASE_VERSION }}.snupkg
+          asset_path: artifacts/${{ env.PROJECT }}-${{ env.RELEASE_VERSION }}.snupkg
           asset_name: ${{ env.PROJECT }}.${{ env.RELEASE_VERSION }}.snupkg
           asset_content_type: application/zip
 
