@@ -40,12 +40,6 @@ jobs:
         with:
           dotnet-version: 3.1.101
 
-      - name: Copy LICENSE into project folder
-        run: cp LICENSE src/${{ env.PROJECT }}
-
-      - name: Copy README.md into project folder
-        run: cp README.md src/${{ env.PROJECT }}
-      
       - name: dotnet build
         run: dotnet build --configuration ${{ env.CONFIG }}
 
