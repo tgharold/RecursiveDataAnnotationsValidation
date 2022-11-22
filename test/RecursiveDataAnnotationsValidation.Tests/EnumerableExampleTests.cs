@@ -20,6 +20,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Items = new List<ItemExample>(),
                 ItemsList = new List<ItemExample>(),
                 ItemsCollection = new List<ItemExample>(),
+                ItemWithListExamples = new List<ItemWithListExample>(),
             };
 
             var validationResults = new List<ValidationResult>();
@@ -110,7 +111,19 @@ namespace RecursiveDataAnnotationsValidation.Tests
                             ExampleEnumD = ExampleEnum.ValueA
                         }
                     }
-                }
+                },
+                ItemWithListExamples = new List<ItemWithListExample>
+                {
+                    new ItemWithListExample
+                    {
+                        ItemWithListName = "ItemList 0L",
+                        Claims = new List<string>
+                        {
+                            "Claim 0L-1",
+                            "Claim 0L-2",
+                        },
+                    },
+                },
             };
 
             var validationResults = new List<ValidationResult>();
@@ -284,7 +297,46 @@ namespace RecursiveDataAnnotationsValidation.Tests
                         ExampleEnumD = ExampleEnum.ValueA
                     }
                 },
-            }
+            },
+            ItemWithListExamples = new List<ItemWithListExample>
+            {
+                new ItemWithListExample
+                {
+                    ItemWithListName = null,
+                    Claims = new List<string>
+                    {
+                        null,
+                        "ItemList Claim 0L-1L",
+                    },
+                },
+                new ItemWithListExample
+                {
+                    ItemWithListName = "ItemList 1L",
+                    Claims = new List<string>
+                    {
+                        "ItemList Claim 1L-0L",
+                        " ", // whitespace
+                    },
+                },
+                new ItemWithListExample
+                {
+                    ItemWithListName = "ItemList 2L",
+                    Claims = null
+                },
+                new ItemWithListExample
+                {
+                    ItemWithListName = "ItemList 3L",
+                    Claims = new List<string>
+                    {
+                        "ItemList Claim 3L-0L",
+                        "ItemList Claim 3L-1L",
+                        "ItemList Claim 3L-2L",
+                        "ItemList Claim 3L-3L",
+                        "ItemList Claim 3L-4L",
+                        "ItemList Claim 3L-5L",
+                    },
+                },
+            },
         };
         
         [Theory]
@@ -298,6 +350,17 @@ namespace RecursiveDataAnnotationsValidation.Tests
         [InlineData("ItemsCollection[3].SimpleA.IntegerA")]
         [InlineData("ItemsCollection[3].SimpleA.StringB")]
         [InlineData("ItemsList[1].SimpleA.ExampleEnumD")]
+        [InlineData("ItemWithListExamples[0].ItemWithListName")]
+        // It would be nice if these would indicate which element in the IEnumerable was not valid.
+        // That's not easy / almost impossible to do with simple IEnumerable<T> like "string".
+        // There might be an ValidationAttribute derived class that does it?
+        // It may be out of scope for the RecursiveDataAnnotationsValidation project.
+        // It might be possible to report on the FIRST failure in the IEnumerable<T> with the index,
+        // but that would be the responsibility of whatever inherits from ValidationAttribute.
+        [InlineData("ItemWithListExamples[0].Claims")]
+        [InlineData("ItemWithListExamples[1].Claims")]
+        // ^---- future would output "ItemWithListExamples[x].Claims[y]" for the specific element
+        [InlineData("ItemWithListExamples[2].Claims")]
         public void Multiple_failures_contains_expected_memberName(string expectedMemberName)
         {
             var validationResults = new List<ValidationResult>();

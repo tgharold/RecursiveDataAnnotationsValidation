@@ -20,5 +20,8 @@ namespace RecursiveDataAnnotationsValidation.Tests.TestModels
         
         [Required]
         public List<ItemExample> ItemsCollection { get; set; }
+        
+        [Required]
+        public List<ItemWithListExample> ItemWithListExamples { get; set; }
     }
 }
