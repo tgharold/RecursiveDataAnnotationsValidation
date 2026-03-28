@@ -53,13 +53,13 @@ namespace RecursiveDataAnnotationsValidation
         /// <param name="validationContext">Validation context.</param>
         /// <param name="validationResults">A collection that will be populated if validation errors occur.</param>
         /// <returns>Returns true if all validation passes.</returns>
-        public Task<bool> TryValidateObjectRecursiveAsync(
+        public async Task<bool> TryValidateObjectRecursiveAsync(
             object obj,
             ValidationContext validationContext,
             List<ValidationResult> validationResults
             )
         {
-            return Task.FromResult(TryValidateObjectRecursive(
+            return await Task.Run(() => TryValidateObjectRecursive(
                 obj,
                 validationResults,
                 validationContext.Items
@@ -71,13 +71,13 @@ namespace RecursiveDataAnnotationsValidation
         /// <param name="validationResults">A collection that will be populated if validation errors occur.</param>
         /// <param name="validationContextItems">Validation context items.</param>
         /// <returns>Returns true if all validation passes.</returns>
-        public Task<bool> TryValidateObjectRecursiveAsync(
+        public async Task<bool> TryValidateObjectRecursiveAsync(
             object obj,
             List<ValidationResult> validationResults,
             IDictionary<object, object> validationContextItems = null
             )
         {
-            return Task.FromResult(TryValidateObjectRecursive(
+            return await Task.Run(() => TryValidateObjectRecursive(
                 obj,
                 validationResults,
                 new HashSet<object>(),
