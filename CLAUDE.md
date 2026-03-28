@@ -31,12 +31,12 @@ The codebase has a clear separation between the main library and tests:
 
 ### Build
 ```bash
-dotnet build src/RecursiveDataAnnotationsValidation/RecursiveDataAnnotationsValidation.csproj
+dotnet build
 ```
 
 ### Run Tests
 ```bash
-dotnet test test/RecursiveDataAnnotationsValidation.Tests/RecursiveDataAnnotationsValidation.Tests.csproj
+dotnet test
 ```
 
 ### Run Single Test
