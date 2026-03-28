@@ -85,6 +85,13 @@ namespace RecursiveDataAnnotationsValidation
             ));
         }
 
+        /// <summary>
+        /// Validates the specified object and adds any validation results to the provided collection.
+        /// </summary>
+        /// <param name="obj">The object to validate.</param>
+        /// <param name="validationResults">A collection to receive any validation errors.</param>
+        /// <param name="validationContextItems">Optional context items for the validation context.</param>
+        /// <returns>True if the object is valid; otherwise, false.</returns>
         private bool TryValidateObject(
             object obj, 
             ICollection<ValidationResult> validationResults, 
