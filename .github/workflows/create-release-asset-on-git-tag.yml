@@ -67,7 +67,7 @@ jobs:
         run: ls -l artifacts/          
 
       - name: Archive artifacts directory
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.PROJECT }}.artifacts.${{ env.RELEASE_VERSION }}
           path: |
@@ -98,7 +98,7 @@ jobs:
         run: ls -l release/
         
       - name: Archive release directory
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.PROJECT }}.release.${{ env.RELEASE_TAG }}
           path: |
