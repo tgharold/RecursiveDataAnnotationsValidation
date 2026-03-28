@@ -35,10 +35,10 @@ jobs:
           echo "RELEASE_TAG=$RELEASE_TAG env.RELEASE_TAG=${{ env.RELEASE_TAG }}"
           echo "RELEASE_VERSION=$RELEASE_VERSION env.RELEASE_VERSION=${{ env.RELEASE_VERSION }}"
         
-      - name: Setup .NET 6
+      - name: Setup .NET 8
         uses: actions/setup-dotnet@v1
         with:
-          dotnet-version: 6.0.302
+          dotnet-version: 8.0.204
 
       - name: dotnet build
         run: dotnet build --configuration ${{ env.CONFIG }}
