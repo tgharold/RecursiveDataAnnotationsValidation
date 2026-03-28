@@ -1,0 +1,26 @@
+# .claudeignore
+
+# Build artifacts
+**/bin/
+**/obj/
+
+# Package cache
+**/packages/
+**/.nuget/
+
+# IDE specific files
+**/*.idea/
+**/*.vscode/
+**/.vs/
+
+# Temporary and log files
+**/temp/
+**/logs/
+**/*.log
+
+# Test results
+**/TestResults/
+
+# Visual Studio cache
+**/_ReSharper*/
+**/ReSharper*
