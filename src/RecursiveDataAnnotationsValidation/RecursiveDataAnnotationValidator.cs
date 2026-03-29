@@ -2,13 +2,14 @@ using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
+using System.Threading.Tasks;
 using RecursiveDataAnnotationsValidation.Attributes;
 using RecursiveDataAnnotationsValidation.Extensions;
 
 namespace RecursiveDataAnnotationsValidation
 {
     /// <summary>Recursive validator for DataAnnotation attribute-based validation.</summary>
-    public class RecursiveDataAnnotationValidator : IRecursiveDataAnnotationValidator
+    public class RecursiveDataAnnotationValidator : IRecursiveDataAnnotationValidator, IAsyncRecursiveDataAnnotationValidator
     {
         /// <summary>Runs validation on an object.</summary>
         /// <param name="obj">The object being validated.</param>
@@ -34,19 +35,63 @@ namespace RecursiveDataAnnotationsValidation
         /// <param name="validationContextItems">Validation context items.</param>
         /// <returns>Returns true if all validation passes.</returns>
         public bool TryValidateObjectRecursive(
-            object obj, 
-            List<ValidationResult> validationResults, 
+            object obj,
+            List<ValidationResult> validationResults,
             IDictionary<object, object> validationContextItems = null
             )
         {
             return TryValidateObjectRecursive(
-                obj, 
-                validationResults, 
-                new HashSet<object>(), 
+                obj,
+                validationResults,
+                new HashSet<object>(),
                 validationContextItems
                 );
         }
 
+        /// <summary>Runs async validation on an object.</summary>
+        /// <param name="obj">The object being validated.</param>
+        /// <param name="validationContext">Validation context.</param>
+        /// <param name="validationResults">A collection that will be populated if validation errors occur.</param>
+        /// <returns>Returns true if all validation passes.</returns>
+        public async Task<bool> TryValidateObjectRecursiveAsync(
+            object obj,
+            ValidationContext validationContext,
+            List<ValidationResult> validationResults
+            )
+        {
+            return await Task.Run(() => TryValidateObjectRecursive(
+                obj,
+                validationResults,
+                validationContext.Items
+            ));
+        }
+
+        /// <summary>Runs async validation on an object.</summary>
+        /// <param name="obj">The object being validated.</param>
+        /// <param name="validationResults">A collection that will be populated if validation errors occur.</param>
+        /// <param name="validationContextItems">Validation context items.</param>
+        /// <returns>Returns true if all validation passes.</returns>
+        public async Task<bool> TryValidateObjectRecursiveAsync(
+            object obj,
+            List<ValidationResult> validationResults,
+            IDictionary<object, object> validationContextItems = null
+            )
+        {
+            return await Task.Run(() => TryValidateObjectRecursive(
+                obj,
+                validationResults,
+                new HashSet<object>(),
+                validationContextItems
+            ));
+        }
+
+        /// <summary>
+        /// Validates the specified object and adds any validation results to the provided collection.
+        /// </summary>
+        /// <param name="obj">The object to validate.</param>
+        /// <param name="validationResults">A collection to receive any validation errors.</param>
+        /// <param name="validationContextItems">Optional context items for the validation context.</param>
+        /// <returns>True if the object is valid; otherwise, false.</returns>
         private bool TryValidateObject(
             object obj, 
             ICollection<ValidationResult> validationResults, 
