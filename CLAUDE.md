@@ -69,3 +69,11 @@ The recursive validator handles:
 4. Proper error message formatting that includes property paths
 
 The validator uses reflection to examine object properties and recursively validate nested objects.
+
+## Changelog
+
+`CHANGELOG.md` follows the Keep a Changelog format. When you change the library's public API, validation behavior or NuGet package contents, add an entry under `Unreleased` in the same change. Use the headings Added, Changed, Deprecated, Removed, Fixed and Security.
+
+Mark breaking changes with **BREAKING** and describe what callers must change. Breaking changes include changed member name formats, changed error messages that callers might parse, and removed or renamed public members. Keep entries short. Build, test and CI-only changes need an entry only when they affect what ships.
+
+See `RELEASE-PROCESS.md` for how the changelog fits into a release.
