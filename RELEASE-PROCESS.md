@@ -9,6 +9,12 @@ The release workflow publishes to nuget.org with Trusted Publishing. No API key 
 3. Set the environment to `nuget`.
 4. Set the repository variable `NUGET_USER` to your nuget.org profile name: `gh variable set NUGET_USER --body "<nuget-profile-name>"`.
 
+## Update the Changelog
+
+1. Open `CHANGELOG.md`. Move the entries under `Unreleased` into a new `x.y.z - YYYY-MM-DD` section.
+2. Check that every bug fix, new feature and breaking change since the last tag has an entry. Mark breaking changes with **BREAKING** and describe the upgrade steps. A breaking change requires a new major version.
+3. Merge the changelog update to `master` before you create the tag.
+
 ## Create Tag
 
 1. Create an [annotated git tag](https://git-scm.com/book/en/v2/Git-Basics-Tagging) on the commit for the release. Such as `$ git tag -a v1.1.0 -m "Release v1.1.0"`
