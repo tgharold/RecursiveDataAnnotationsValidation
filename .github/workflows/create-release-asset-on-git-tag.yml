@@ -23,6 +23,16 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # Full history, needed to check that the tag is on master.
+
+      # Only release commits that went through the protected master branch.
+      - name: Verify tag is on master
+        run: |
+          if ! git merge-base --is-ancestor HEAD origin/master; then
+            echo "::error::Tagged commit is not reachable from master"
+            exit 1
+          fi
 
       # Tag names can contain shell metacharacters, so only accept vMAJOR.MINOR.PATCH[-suffix].
       - name: Get Release Version
