@@ -18,6 +18,11 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Publishing needs approval from a required reviewer and only runs for v* tags.
+    environment: nuget
+    permissions:
+      contents: write
+      id-token: write # Needed for NuGet Trusted Publishing (OIDC).
 
     steps:
 
@@ -135,9 +140,16 @@ jobs:
           "artifacts/${PROJECT}.${RELEASE_VERSION}.nupkg"
           "artifacts/${PROJECT}.${RELEASE_VERSION}.snupkg"
 
+      # Trusted Publishing: exchanges the GitHub OIDC token for a short-lived NuGet API key.
+      - name: NuGet login
+        id: nuget-login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ vars.NUGET_USER }}
+
       - name: Publish on nuget.org
         env:
-          NUGET_API_KEY: ${{ secrets.NugetApiKey }}
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
         run: >
           dotnet nuget push 'artifacts/*.nupkg'
           -k "$NUGET_API_KEY"
