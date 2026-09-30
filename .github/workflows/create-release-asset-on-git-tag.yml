@@ -95,12 +95,15 @@ jobs:
 
       # Uses the preinstalled GitHub CLI. The old actions/create-release and
       # actions/upload-release-asset actions are archived and no longer maintained.
+      # The release stays a draft until the last step, because a published release is
+      # immutable and cannot receive assets. A failed run leaves a draft that can be deleted.
       - name: Create Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >
           gh release create "$RELEASE_TAG"
           --verify-tag
+          --draft
           --prerelease
           --title "Release $RELEASE_TAG"
           --notes ""
@@ -154,3 +157,8 @@ jobs:
           dotnet nuget push 'artifacts/*.nupkg'
           -k "$NUGET_API_KEY"
           -s https://api.nuget.org/v3/index.json
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$RELEASE_TAG" --draft=false
