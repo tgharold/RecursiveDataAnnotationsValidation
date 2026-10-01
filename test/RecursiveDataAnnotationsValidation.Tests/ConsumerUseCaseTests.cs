@@ -136,6 +136,21 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.Null(ex);
                 Assert.False(valid);
             }
+
+            [Fact]
+            public async Task Failure_in_a_nested_object_returns_false_async_without_a_validation_context()
+            {
+                var parent = new Parent { Title = "t", Child = new Leaf { Name = null } };
+
+                var valid = true;
+                var ex = await Record.ExceptionAsync(async () =>
+                    valid = await new RecursiveDataAnnotationValidator().TryValidateObjectRecursiveAsync(
+                        parent,
+                        (List<ValidationResult>)null));
+
+                Assert.Null(ex);
+                Assert.False(valid);
+            }
         }
 
         /// <summary>
@@ -507,6 +522,46 @@ namespace RecursiveDataAnnotationsValidation.Tests
             }
 
             [Fact]
+            public async Task Context_items_reach_nested_objects_and_collection_items_async()
+            {
+                var root = new TenantRoot();
+                var context = new ValidationContext(root, null, new Dictionary<object, object> { ["tenant"] = "acme" });
+
+                var results = new List<ValidationResult>();
+                var valid = await new RecursiveDataAnnotationValidator().TryValidateObjectRecursiveAsync(root, context, results);
+
+                Assert.True(valid);
+                Assert.Empty(results);
+            }
+
+            // The overloads that take only items pass them straight in, with no ValidationContext.
+            [Fact]
+            public void Items_passed_without_a_context_reach_nested_objects_and_collection_items()
+            {
+                var root = new TenantRoot();
+                var items = new Dictionary<object, object> { ["tenant"] = "acme" };
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(root, results, items);
+
+                Assert.True(valid);
+                Assert.Empty(results);
+            }
+
+            [Fact]
+            public async Task Items_passed_without_a_context_reach_nested_objects_and_collection_items_async()
+            {
+                var root = new TenantRoot();
+                var items = new Dictionary<object, object> { ["tenant"] = "acme" };
+
+                var results = new List<ValidationResult>();
+                var valid = await new RecursiveDataAnnotationValidator().TryValidateObjectRecursiveAsync(root, results, items);
+
+                Assert.True(valid);
+                Assert.Empty(results);
+            }
+
+            [Fact]
             public void Missing_context_items_are_reported_on_each_nested_object()
             {
                 var root = new TenantRoot();
@@ -572,6 +627,19 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
                 // One result for Reply and one for Replies[0]. The attribute returns no member
                 // names, so only the messages are checked.
+                Assert.False(valid);
+                Assert.Equal(2, results.Count);
+                Assert.All(results, r => Assert.Equal("The IBannedWords service was not available.", r.ErrorMessage));
+            }
+
+            [Fact]
+            public async Task Overload_without_a_context_has_no_service_provider_async()
+            {
+                var thread = new CommentThread();
+
+                var results = new List<ValidationResult>();
+                var valid = await new RecursiveDataAnnotationValidator().TryValidateObjectRecursiveAsync(thread, results);
+
                 Assert.False(valid);
                 Assert.Equal(2, results.Count);
                 Assert.All(results, r => Assert.Equal("The IBannedWords service was not available.", r.ErrorMessage));
