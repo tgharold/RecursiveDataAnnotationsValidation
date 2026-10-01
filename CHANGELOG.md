@@ -10,7 +10,7 @@ Breaking changes are marked **BREAKING**.
 
 ### Changed
 
-- Collections whose items can only be primitives, enums, `string`, `decimal`, `DateTime`, `DateTimeOffset`, `TimeSpan`, `Guid`, or a `Nullable` of one of those are no longer enumerated. These items carry no DataAnnotations, so results do not change. Large payloads such as a `byte[]` validate much faster.
+- Collections whose items are declared as primitives, enums, `string`, `decimal`, `DateTime`, `DateTimeOffset`, `TimeSpan` or `Guid`, as a `Nullable` of one of those, or as a `KeyValuePair` of two of those, are no longer enumerated. These items carry no DataAnnotations, so the validation results do not change. Large payloads such as a `byte[]` or a `Dictionary<string, string>` validate much faster. A lazy sequence of these types, such as a LINQ query or an `IQueryable<int>`, is no longer run during validation, so an exception it throws while enumerating no longer surfaces.
 
 ## 2.2.4 - 2026-10-01
 
