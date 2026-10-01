@@ -16,7 +16,15 @@ env:
   TARGET: netstandard2.0
 
 jobs:
+  # The same test matrix as pull requests: net8.0 and net10.0 on Linux and Windows,
+  # and net481 on Windows. Nothing below runs, and no approval is requested, unless it passes.
+  test:
+    uses: ./.github/workflows/dotnetcore-build-test.yml
+    permissions:
+      contents: read
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     # Publishing needs approval from a required reviewer and only runs for v* tags.
     environment: nuget
@@ -55,16 +63,16 @@ jobs:
           echo "RELEASE_TAG=$RELEASE_TAG"
           echo "RELEASE_VERSION=$RELEASE_VERSION"
 
-      - name: Setup .NET 8
+      # The solution includes the test project, which targets net10.0, so the build needs the .NET 10 SDK.
+      - name: Setup .NET 8 and .NET 10
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: |
+            8.0.x
+            10.0.x
 
       - name: dotnet build
         run: dotnet build --configuration "$CONFIG"
-
-      - name: dotnet test
-        run: dotnet test --configuration "$CONFIG"
 
       - name: dotnet publish
         working-directory: ./src/${{ env.PROJECT }}
