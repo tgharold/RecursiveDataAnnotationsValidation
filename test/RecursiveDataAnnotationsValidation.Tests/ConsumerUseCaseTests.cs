@@ -420,15 +420,18 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// <summary>
         /// Use case: the options validator above builds the context with a null service provider
         /// and null items. A caller can also pass items,
-        /// or a service provider. The public overloads keep only validationContext.Items.
-        /// The validator then builds a new ValidationContext for each object it visits.
+        /// or a service provider. The validator builds a new ValidationContext for each object it
+        /// visits, and passes on both.
         /// - Items reach every object, including nested ones, so an IValidatableObject deep in the
         ///   graph can read them.
-        /// - The service provider does not. Each new context has a null provider, so an attribute
-        ///   that calls validationContext.GetService gets null for every object, root included.
-        ///   The callers found pass a context without a provider, so none is affected today.
+        /// - The service provider reaches every object too, so an attribute that calls
+        ///   validationContext.GetService gets the caller's service. Each new context uses the
+        ///   caller's context as its provider, which is what Validator does for each property.
+        ///   Up to release 2.2.4, each new context had a null provider, root included.
+        /// - The overload that takes only items has no provider, so GetService returns null.
         /// See: https://learn.microsoft.com/dotnet/api/system.componentmodel.dataannotations.validationcontext.items
         /// See: https://learn.microsoft.com/dotnet/api/system.componentmodel.dataannotations.validationcontext.getservice
+        /// See: https://github.com/dotnet/runtime/blob/main/src/libraries/System.ComponentModel.Annotations/src/System/ComponentModel/DataAnnotations/Validator.cs (CreateValidationContext)
         /// </summary>
         public class ValidationContextFlow
         {
@@ -472,6 +475,13 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 public string Text { get; set; } = "hello";
             }
 
+            public class CommentThread
+            {
+                public Comment Reply { get; set; } = new Comment();
+
+                public List<Comment> Replies { get; set; } = new List<Comment> { new Comment() };
+            }
+
             private class Services : IServiceProvider
             {
                 public object GetService(Type serviceType) =>
@@ -512,7 +522,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                     ResultText.Describe(results));
             }
 
-            [Fact(Skip = "Not fixed yet. The service provider of the caller's context is not passed on, so GetService returns null.")]
+            [Fact]
             public void Service_provider_of_the_context_reaches_attributes()
             {
                 var comment = new Comment();
@@ -523,6 +533,48 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
                 Assert.True(valid);
                 Assert.Empty(results);
+            }
+
+            [Fact]
+            public void Service_provider_of_the_context_reaches_nested_objects_and_collection_items()
+            {
+                var thread = new CommentThread();
+                var context = new ValidationContext(thread, new Services(), null);
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(thread, context, results);
+
+                Assert.True(valid);
+                Assert.Empty(results);
+            }
+
+            [Fact]
+            public async Task Service_provider_of_the_context_reaches_nested_objects_async()
+            {
+                var thread = new CommentThread();
+                var context = new ValidationContext(thread, new Services(), null);
+
+                var results = new List<ValidationResult>();
+                var valid = await new RecursiveDataAnnotationValidator().TryValidateObjectRecursiveAsync(thread, context, results);
+
+                Assert.True(valid);
+                Assert.Empty(results);
+            }
+
+            // The overload that takes only items has no service provider to pass on.
+            [Fact]
+            public void Overload_without_a_context_has_no_service_provider()
+            {
+                var thread = new CommentThread();
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(thread, results);
+
+                // One result for Reply and one for Replies[0]. The attribute returns no member
+                // names, so only the messages are checked.
+                Assert.False(valid);
+                Assert.Equal(2, results.Count);
+                Assert.All(results, r => Assert.Equal("The IBannedWords service was not available.", r.ErrorMessage));
             }
         }
 
