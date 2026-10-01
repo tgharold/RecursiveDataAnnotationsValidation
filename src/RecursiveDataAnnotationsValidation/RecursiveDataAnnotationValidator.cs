@@ -14,7 +14,7 @@ namespace RecursiveDataAnnotationsValidation
         /// <summary>Runs validation on an object.</summary>
         /// <param name="obj">The object being validated.</param>
         /// <param name="validationContext">Validation context.</param>
-        /// <param name="validationResults">A collection that will be populated if validation errors occur.</param>
+        /// <param name="validationResults">A collection that will be populated if validation errors occur. Can be null when only the return value is needed.</param>
         /// <returns>Returns true if all validation passes.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="obj"/> or <paramref name="validationContext"/> is null.</exception>
         public bool TryValidateObjectRecursive(
@@ -35,7 +35,7 @@ namespace RecursiveDataAnnotationsValidation
 
         /// <summary>Runs validation on an object.</summary>
         /// <param name="obj">The object being validated.</param>
-        /// <param name="validationResults">A collection that will be populated if validation errors occur.</param>
+        /// <param name="validationResults">A collection that will be populated if validation errors occur. Can be null when only the return value is needed.</param>
         /// <param name="validationContextItems">Validation context items.</param>
         /// <returns>Returns true if all validation passes.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="obj"/> is null.</exception>
@@ -46,6 +46,9 @@ namespace RecursiveDataAnnotationsValidation
             )
         {
             if (obj == null) throw new ArgumentNullException(nameof(obj));
+
+            //like Validator.TryValidateObject, a null list means the caller wants only the return value
+            validationResults = validationResults ?? new List<ValidationResult>();
 
             return TryValidateObjectRecursive(
                 obj,
@@ -59,7 +62,7 @@ namespace RecursiveDataAnnotationsValidation
         /// <summary>Runs async validation on an object.</summary>
         /// <param name="obj">The object being validated.</param>
         /// <param name="validationContext">Validation context.</param>
-        /// <param name="validationResults">A collection that will be populated if validation errors occur.</param>
+        /// <param name="validationResults">A collection that will be populated if validation errors occur. Can be null when only the return value is needed.</param>
         /// <returns>Returns true if all validation passes.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="obj"/> or <paramref name="validationContext"/> is null.</exception>
         public async Task<bool> TryValidateObjectRecursiveAsync(
@@ -80,7 +83,7 @@ namespace RecursiveDataAnnotationsValidation
 
         /// <summary>Runs async validation on an object.</summary>
         /// <param name="obj">The object being validated.</param>
-        /// <param name="validationResults">A collection that will be populated if validation errors occur.</param>
+        /// <param name="validationResults">A collection that will be populated if validation errors occur. Can be null when only the return value is needed.</param>
         /// <param name="validationContextItems">Validation context items.</param>
         /// <returns>Returns true if all validation passes.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="obj"/> is null.</exception>
@@ -91,6 +94,9 @@ namespace RecursiveDataAnnotationsValidation
             )
         {
             if (obj == null) throw new ArgumentNullException(nameof(obj));
+
+            //like Validator.TryValidateObject, a null list means the caller wants only the return value
+            validationResults = validationResults ?? new List<ValidationResult>();
 
             return await Task.Run(() => TryValidateObjectRecursive(
                 obj,
