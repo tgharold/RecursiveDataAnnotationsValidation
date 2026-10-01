@@ -24,7 +24,7 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
     /// See: https://learn.microsoft.com/dotnet/csharp/language-reference/keywords/sealed
     /// See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/value-types
     /// The library targets netstandard2.0, so it cannot name newer types such as DateOnly or
-    /// Int128. The tests run on net8.0, where those types exist, and show that the checks find
+    /// Int128. The tests on net8.0 and later, where those types exist, show that the checks find
     /// them by their shape instead of by name.
     /// See: https://learn.microsoft.com/dotnet/standard/frameworks
     /// </summary>
@@ -95,10 +95,14 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
         [InlineData(typeof(string[]))]
         [InlineData(typeof(Dictionary<string, int>))]
         [InlineData(typeof(Dictionary<string, string>))]
+#if NET8_0_OR_GREATER
+        // These types do not exist on .NET Framework, so the net481 build leaves them out.
+        // See: https://learn.microsoft.com/dotnet/csharp/language-reference/preprocessor-directives
         [InlineData(typeof(DateOnly[]))]
         [InlineData(typeof(List<TimeOnly>))]
         [InlineData(typeof(Int128[]))]
         [InlineData(typeof(Half[]))]
+#endif
         [InlineData(typeof(List<System.Numerics.BigInteger>))]
         [InlineData(typeof(List<PlainPoint>))]
         [InlineData(typeof(List<PlainPoint?>))]
