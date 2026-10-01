@@ -20,6 +20,9 @@ namespace RecursiveDataAnnotationsValidation.Extensions
         private static readonly ConcurrentDictionary<Type, (int Version, bool IsLeaf)> LeafTypeCache =
             new ConcurrentDictionary<Type, (int Version, bool IsLeaf)>();
 
+        private static readonly ConcurrentDictionary<Type, bool> RecordCache =
+            new ConcurrentDictionary<Type, bool>();
+
         private static int _typeDescriptorVersion;
 
         static TypeExtensions()
@@ -74,6 +77,18 @@ namespace RecursiveDataAnnotationsValidation.Extensions
                 && property.CanRead
                 && property.GetIndexParameters().Length == 0
                 && !property.IsDefined(typeof(SkipRecursiveValidationAttribute), false);
+        }
+
+        /// <summary>
+        /// True for a C# record class. The compiler gives every record class a non-public
+        /// EqualityContract property of type Type, declared on the record itself, and the
+        /// generated Equals compares it.
+        /// </summary>
+        public static bool IsRecord(this Type type)
+        {
+            return RecordCache.GetOrAdd(type, t =>
+                t.GetProperty("EqualityContract", BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                    ?.PropertyType == typeof(Type));
         }
 
         private static Type[] FindElementTypes(Type collectionType)

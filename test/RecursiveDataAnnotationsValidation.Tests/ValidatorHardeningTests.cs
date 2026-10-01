@@ -106,29 +106,39 @@ namespace RecursiveDataAnnotationsValidation.Tests
         }
 
         /// <summary>
-        /// Cycle detection uses HashSet&lt;object&gt; with the default comparer, which calls
-        /// Equals and GetHashCode. Two different objects that compare as equal count as
-        /// "already validated", so the second one is never checked.
-        /// Records (value equality) and classes with a custom Equals both trigger this.
+        /// The validator remembers each object it visits, to stop on cycles. It used a
+        /// HashSet&lt;object&gt; with the default comparer, which calls the model's Equals and
+        /// GetHashCode. Two different objects that compared equal counted as "already validated",
+        /// so the second one was never checked. Records (value equality) and classes with a
+        /// custom Equals both triggered this.
         /// Problem: with an Equals keyed on an Id, a valid item followed by an invalid item with
-        /// the same Id returns valid=true with no errors. The invalid item bypasses validation.
-        /// Records cannot bypass validation this way, because equal records have the same values
-        /// and so the same validity. They only lose the error paths for the duplicates.
-        /// A custom GetHashCode also runs on untrusted objects.
-        /// Proposed fix: add a small internal reference-equality comparer (netstandard2.0 has no
-        /// ReferenceEqualityComparer). It uses ReferenceEquals and RuntimeHelpers.GetHashCode.
-        /// Pass it to both `new HashSet&lt;object&gt;()` calls in RecursiveDataAnnotationValidator.
-        /// Order: land this with or after the primitive-collection skip (see PrimitiveCollections).
-        /// Today, boxed primitives in a collection are de-duplicated by value, so a byte[] of
-        /// zeros validates one item. With reference equality, every boxed item is validated and
-        /// kept in the set. For 1M items that is about 10 times slower.
-        /// Risk: a computed property that returns a new, equal instance on each read, such as
-        /// `Point Origin => new Point(0, 0)` on a record, stops today only because of value
-        /// equality. With reference equality it recurses until the stack overflows. This needs
-        /// a decision together with the max-depth item.
+        /// the same Id returned valid=true with no errors. The invalid item bypassed validation.
+        /// Equal records have the same values, so they lost only the duplicate error paths.
+        /// Fix: the set compares by reference (ObjectReferenceComparer, built on ReferenceEquals
+        /// and RuntimeHelpers.GetHashCode), so the model's Equals and GetHashCode no longer run.
+        /// See: https://learn.microsoft.com/dotnet/api/system.runtime.compilerservices.runtimehelpers.gethashcode
+        ///
+        /// Records need one more check. A record property can return a new, equal record on each
+        /// read, such as `Point Origin => new Point(0, 0)`. Each read is a new reference, so a
+        /// reference check alone never stops, and the walk overflows the stack. So a record is
+        /// also skipped when it Equals a record of the same type on its own path from the root.
+        /// The check is limited to records: a class Equals keyed on an Id would skip a child that
+        /// has its parent's Id, which is the bypass again.
+        ///
+        /// Leaf items: with reference equality, a boxed item is never "already validated", because
+        /// boxing makes a new object each time. A List&lt;object&gt; of a million zeros validated one
+        /// item before and would validate a million after. So the validator now skips any object
+        /// whose runtime type is a leaf type (see PrimitiveCollections) before the set lookup.
+        ///
         /// Behavior change: results for graphs with equal-but-distinct objects now include the
         /// previously dropped errors. Models that passed because of the bypass now fail.
-        /// That is a bug fix, but it needs a changelog entry.
+        /// Known gaps:
+        /// - Two records that reference each other, and whose other values are also equal, still
+        ///   overflow the stack: the record's own generated Equals follows the cycle forever.
+        ///   On master, any two records that referenced each other overflowed.
+        /// - A record with a hand-written Equals keyed on an Id can still hide a descendant.
+        /// - A class property that returns a new object on each read, such as
+        ///   `Vector Zero => new Vector()`, overflows the stack, as it did on master.
         /// </summary>
         public class ReferenceEquality
         {
@@ -319,6 +329,32 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
                 Assert.True(valid);
                 Assert.Empty(results);
+            }
+
+            public record LinkedRecord
+            {
+                [Required]
+                public string Name { get; set; }
+
+                public LinkedRecord Next { get; set; }
+            }
+
+            // On master this overflowed the stack. HashSet called the record's generated
+            // GetHashCode, which hashes Next, whose GetHashCode hashes Next again, forever.
+            // The reference comparer never calls GetHashCode on the model. This test is not in
+            // the spec commit because the overflow would kill the test host there.
+            [Fact]
+            public void Records_that_reference_each_other_are_validated()
+            {
+                var first = new LinkedRecord { Name = "first" };
+                var second = new LinkedRecord { Next = first };
+                first.Next = second;
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(first, results);
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Next.Name"));
             }
         }
 

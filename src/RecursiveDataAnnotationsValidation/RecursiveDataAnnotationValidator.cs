@@ -50,7 +50,8 @@ namespace RecursiveDataAnnotationsValidation
             return TryValidateObjectRecursive(
                 obj,
                 validationResults,
-                new HashSet<object>(),
+                new HashSet<object>(ObjectReferenceComparer.Instance),
+                new List<object>(),
                 validationContextItems
                 );
         }
@@ -94,7 +95,8 @@ namespace RecursiveDataAnnotationsValidation
             return await Task.Run(() => TryValidateObjectRecursive(
                 obj,
                 validationResults,
-                new HashSet<object>(),
+                new HashSet<object>(ObjectReferenceComparer.Instance),
+                new List<object>(),
                 validationContextItems
             ));
         }
@@ -124,23 +126,46 @@ namespace RecursiveDataAnnotationsValidation
             );
         }
 
+        //validatedObjects holds every object visited so far, compared by reference.
+        //recordPath holds the records on the path from the root to this object.
         private bool TryValidateObjectRecursive(
             object obj, 
             ICollection<ValidationResult> validationResults, 
             ISet<object> validatedObjects, 
+            List<object> recordPath,
             IDictionary<object, object> validationContextItems = null
             )
         {
+            var type = obj.GetType();
+
+            //an object of a leaf type can never produce a result, such as a boxed int in an object[] (see IsLeafType)
+            if (type.IsLeafType())
+            {
+                return true;
+            }
+
             //short-circuit to avoid infinite loops on cyclical object graphs
             if (validatedObjects.Contains(obj))
             {
                 return true;
             }
 
+            //a record property can return a new, equal record on each read, such as
+            //`Point Origin => new Point(0, 0)`, so references alone never repeat. Stop at a record
+            //that Equals one of its own ancestors. Classes are left out: a class Equals keyed on
+            //an Id would skip a child that has its parent's Id.
+            var isRecord = type.IsRecord();
+            if (isRecord && recordPath.Any(ancestor => ancestor.GetType() == type && obj.Equals(ancestor)))
+            {
+                return true;
+            }
+
             validatedObjects.Add(obj);
+            if (isRecord) recordPath.Add(obj);
+
             var result = TryValidateObject(obj, validationResults, validationContextItems);
 
-            var properties = obj.GetType().GetProperties().Where(prop => prop.IsWalked()).ToList();
+            var properties = type.GetProperties().Where(prop => prop.IsWalked()).ToList();
 
             foreach (var property in properties)
             {
@@ -170,6 +195,7 @@ namespace RecursiveDataAnnotationsValidation
                                 item, 
                                 nestedResults, 
                                 validatedObjects, 
+                                recordPath,
                                 validationContextItems
                                 ))
                             {
@@ -195,6 +221,7 @@ namespace RecursiveDataAnnotationsValidation
                             value, 
                             nestedResults, 
                             validatedObjects, 
+                            recordPath,
                             validationContextItems
                             ))
                         {
@@ -212,6 +239,8 @@ namespace RecursiveDataAnnotationsValidation
                         break;
                 }
             }
+
+            if (isRecord) recordPath.RemoveAt(recordPath.Count - 1);
 
             return result;
         }

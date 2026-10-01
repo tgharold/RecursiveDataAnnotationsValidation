@@ -131,5 +131,30 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
         {
             Assert.False(type.IsCollectionOfLeafType());
         }
+
+        public record BaseRecord;
+
+        public record DerivedRecord : BaseRecord;
+
+        public sealed record SealedRecord;
+
+        public record struct ValueRecord(int X);
+
+        // Every record class gets a compiler-generated, non-public EqualityContract property,
+        // declared again in each derived record. A record struct has none: it is a value type,
+        // which the validator never walks into.
+        // See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/record#equality-in-inheritance-hierarchies
+        [Theory]
+        [InlineData(typeof(BaseRecord), true)]
+        [InlineData(typeof(DerivedRecord), true)]
+        [InlineData(typeof(SealedRecord), true)]
+        [InlineData(typeof(ValueRecord), false)]
+        [InlineData(typeof(Child), false)]
+        [InlineData(typeof(SealedTag), false)]
+        [InlineData(typeof(string), false)]
+        public void Record_classes_are_detected(Type type, bool isRecord)
+        {
+            Assert.Equal(isRecord, type.IsRecord());
+        }
     }
 }
