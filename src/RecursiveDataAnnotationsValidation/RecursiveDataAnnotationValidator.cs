@@ -5,6 +5,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
 using RecursiveDataAnnotationsValidation.Attributes;
+using RecursiveDataAnnotationsValidation.Extensions;
 
 namespace RecursiveDataAnnotationsValidation
 {
@@ -155,7 +156,11 @@ namespace RecursiveDataAnnotationsValidation
                 {
                     case null:
                         continue;
-                    
+
+                    //items of these types carry no attributes, so don't enumerate them
+                    case IEnumerable _ when value.GetType().IsCollectionOfLeafType():
+                        continue;
+
                     case IEnumerable asEnumerable:
                         var arrayIndex = -1;
                         foreach (var item in asEnumerable)
