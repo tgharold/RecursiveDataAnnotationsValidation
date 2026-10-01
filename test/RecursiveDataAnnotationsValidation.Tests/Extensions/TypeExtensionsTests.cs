@@ -187,6 +187,53 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
             Assert.False(typeof(UserUri).IsUnsafeToWalk());
         }
 
+        // The namespace check has three outcomes besides "System": no namespace, a namespace that
+        // only begins with the letters "System", and a nested System.* namespace.
+        // See: https://learn.microsoft.com/dotnet/api/system.type.namespace
+        [Fact]
+        public void Subclass_in_the_global_namespace_is_not_detected()
+        {
+            // Type.Namespace is null for a type declared outside any namespace.
+            Assert.Null(typeof(GlobalNamespaceUri).Namespace);
+
+            Assert.False(typeof(GlobalNamespaceUri).IsUnsafeToWalk());
+            Assert.True(typeof(GlobalNamespaceUri).GetProperty(nameof(GlobalNamespaceUri.Owner)).IsWalked());
+            Assert.False(typeof(GlobalNamespaceUri).GetProperty(nameof(Uri.Segments)).IsWalked());
+        }
+
+        [Theory]
+        [InlineData(typeof(SystemLookalike.LookalikeUri), "SystemLookalike")]
+        [InlineData(typeof(Systematic.SystematicUri), "Systematic")]
+        public void Subclass_in_a_namespace_that_only_begins_with_System_is_not_detected(Type type, string expectedNamespace)
+        {
+            Assert.Equal(expectedNamespace, type.Namespace);
+
+            Assert.False(type.IsUnsafeToWalk());
+        }
+
+        [Theory]
+        [InlineData(typeof(System.Reflection.TypeInfo))]
+        [InlineData(typeof(System.Reflection.PropertyInfo))]
+        [InlineData(typeof(System.Reflection.Emit.AssemblyBuilder))]
+        public void Framework_subclass_in_a_nested_system_namespace_is_detected(Type type)
+        {
+            Assert.StartsWith("System.", type.Namespace);
+
+            Assert.True(type.IsUnsafeToWalk());
+        }
+
+        // The collection is not a denied type. The validator enumerates it, and each item is then
+        // checked on its own. Only the properties that the denied types declare are skipped.
+        [Theory]
+        [InlineData(typeof(Uri[]))]
+        [InlineData(typeof(List<Uri>))]
+        [InlineData(typeof(Type[]))]
+        [InlineData(typeof(Dictionary<string, Uri>))]
+        public void Collection_of_a_denied_type_is_not_detected(Type type)
+        {
+            Assert.False(type.IsUnsafeToWalk());
+        }
+
         [Fact]
         public void Property_declared_by_a_denied_type_is_not_walked()
         {
