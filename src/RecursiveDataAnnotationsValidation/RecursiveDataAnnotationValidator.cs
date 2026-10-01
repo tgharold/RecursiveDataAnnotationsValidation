@@ -5,7 +5,6 @@ using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
 using RecursiveDataAnnotationsValidation.Attributes;
-using RecursiveDataAnnotationsValidation.Extensions;
 
 namespace RecursiveDataAnnotationsValidation
 {
@@ -149,7 +148,7 @@ namespace RecursiveDataAnnotationsValidation
             {
                 if (property.PropertyType == typeof(string) || property.PropertyType.IsValueType) continue;
 
-                var value = obj.GetPropertyValue(property.Name);
+                var value = property.GetValue(obj, null);
 
                 List<ValidationResult> nestedResults;
                 switch (value)

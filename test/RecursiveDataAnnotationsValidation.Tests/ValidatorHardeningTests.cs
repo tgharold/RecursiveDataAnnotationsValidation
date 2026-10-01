@@ -204,18 +204,12 @@ namespace RecursiveDataAnnotationsValidation.Tests
         }
 
         /// <summary>
-        /// The validator finds properties with GetProperties(), then re-reads each value by name
-        /// through obj.GetPropertyValue(name), which calls GetProperty(name). When a derived class
-        /// hides a base property with `new` and gives it a different type, the name matches two
-        /// properties and GetProperty throws AmbiguousMatchException. (A hiding property of the
-        /// same type does not throw.)
-        /// Problem: validation throws for a valid model shape. The result is a failed request or a
-        /// crash instead of validation errors.
-        /// Proposed fix: read the value from the PropertyInfo already in hand,
-        /// `property.GetValue(obj, null)`, instead of looking it up by name again.
-        /// Behavior change: none for models that already validate. Models that threw now validate.
-        /// Both the base and the derived property are walked, and both report as "Nested.x".
-        /// GetPropertyValue becomes unused. Remove it with its tests, or keep it.
+        /// A derived class hides a base property with `new` and gives it a different type.
+        /// GetProperties() then returns both properties. The validator used to re-read each value
+        /// by name with GetProperty(name), which threw AmbiguousMatchException. (A hiding property
+        /// of the same type is returned only once, so it never threw.)
+        /// The validator now reads the value from the PropertyInfo it already has. Both the base
+        /// and the derived property are walked, and both report as "Nested.x".
         /// </summary>
         public class HiddenProperties
         {
