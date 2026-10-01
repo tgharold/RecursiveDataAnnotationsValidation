@@ -8,6 +8,17 @@ Breaking changes are marked **BREAKING**.
 
 ## Unreleased
 
+## 2.3.1 - 2026-10-01
+
+No library changes. The NuGet package contents are the same as v2.3.0.
+
+### Changed
+
+- Add tests for framework objects in a model, the framework-type deny list, deep and wide graphs, and exceptions thrown by property getters, `Validate` and attributes. They also record three limits that this release does not change:
+  - A `Thread` or `Process` in a model makes validation throw `TargetInvocationException`.
+  - A faulted or canceled `Task<T>` of a reference type makes validation throw `TargetInvocationException`.
+  - A chain of more than about 1,500 nested objects overflows a 1 MB stack, because the validator has no maximum depth.
+
 ## 2.3.0 - 2026-10-01
 
 No public API changes. Upgrading from 2.2 needs no code changes. For ordinary models, 2.3 returns the same results as 2.2, with the same member names, messages and order. The Fixed entries below can change results, because a model that passed only because of one of those bugs may now fail.
