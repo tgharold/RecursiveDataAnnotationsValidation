@@ -8,15 +8,19 @@ Breaking changes are marked **BREAKING**.
 
 ## Unreleased
 
+## 2.3.0 - 2026-10-01
+
+No public API changes. Upgrading from 2.2 needs no code changes. For ordinary models, 2.3 returns the same results as 2.2, with the same member names, messages and order. The Fixed entries below can change results, because a model that passed only because of one of those bugs may now fail.
+
 ### Changed
 
 - Collection properties are no longer enumerated when their declared item type has nothing to validate: a value type or sealed class with no validation attribute on the type or its properties, no `IValidatableObject` implementation, and no property the validator walks into. Examples are primitives, enums, `string`, `DateTime`, `Guid` and `DateOnly`, and `Nullable` and `KeyValuePair` items of these types. Attributes added with `TypeDescriptor.AddAttributes` count, so validation results do not change. Large payloads such as a `byte[]` or a `Dictionary<string, string>` validate much faster.
 - Items in a collection declared with `object` items, such as `object[]`, `List<object>` or `Dictionary<string, object>`, are skipped when their runtime type has nothing to validate, by the same rule.
 - Because these collections are no longer enumerated, their enumerators no longer run during validation. A lazy sequence such as a LINQ query or an `IQueryable<int>` is not executed, so an exception it would throw while enumerating no longer surfaces.
-- Release workflow: run the tests on .NET 8, .NET 10 and .NET Framework 4.8.1, on Linux and Windows, before publishing.
 - The recursive validator no longer calls `GetHashCode` on your objects. It calls `Equals` only to compare an object with its ancestors of the same type, a base type or a derived type. On .NET Framework, the framework's `Validator` still calls `GetHashCode`, through `TypeDescriptor`.
 - README: describe how shared objects, cycles and computed properties are handled.
 - The package README is now the repository README, so it also includes the build status and the history and attribution section. The "Legacy" section is renamed "History and attribution".
+- Release workflow: run the tests on .NET 8, .NET 10 and .NET Framework 4.8.1, on Linux and Windows, before publishing.
 
 ### Fixed
 
