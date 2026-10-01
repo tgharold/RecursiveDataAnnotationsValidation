@@ -18,8 +18,9 @@ Breaking changes are marked **BREAKING**.
 
 ### Fixed
 
-- Objects that compare equal but are separate instances are now each validated. Before, only the first was validated, so an invalid object passed when it was `Equals` to one already seen, for example an entity whose `Equals` compares only an `Id`. Models that passed only because of this may now fail. A property that builds a new, equal object on each read, such as `Money Zero => new Money(0)`, still stops the walk as before.
-- Two records that reference each other no longer overflow the stack, unless all their other values are equal too.
+- Objects that compare equal but are separate instances are now each validated. Before, only the first was validated, so an invalid object passed when it was `Equals` to one already seen, for example an entity whose `Equals` compares only an `Id`. Models that passed only because of this may now fail.
+- An object that is `Equals` to one of its own ancestors, such as a sub-folder with its parent's `Id`, now has its own attributes validated. The validator still does not walk into it, so a property that builds a new, equal object on each read, such as `Money Zero => new Money(0)`, still stops the walk as before.
+- Two records that reference each other no longer always overflow the stack. They still do when the generated `Equals` reaches the reference before a property that differs, because it compares properties in declaration order.
 
 ## 2.2.4 - 2026-10-01
 

@@ -121,17 +121,17 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// Computed properties need one more check. A property can return a new, equal object on
         /// each read, such as `Point Origin => new Point(0, 0)` on a record or
         /// `Money Zero => new Money(0)` on a value object. Each read is a new reference, so a
-        /// reference check alone never stops, and the walk overflows the stack. Master stopped
+        /// reference check alone never stops, and the walk overflows the stack. v2.2.0 stopped
         /// these only because of value equality.
-        /// So when an object's type overrides Equals, and the object Equals an object of the same
-        /// type on its own path from the root, the validator reads the property it came from a
-        /// second time:
-        /// - A different object back means the property is computed. The walk stops there, as
-        ///   it did on master.
-        /// - The same object back means it is stored data, such as a child entity that has its
-        ///   parent's Id. The walk goes on, so that child is validated. Stopping there would be
-        ///   the bypass again.
-        /// For a collection item, the second read is of the collection property.
+        /// So the validator keeps a second list: the objects on the path from the root to the
+        /// current object whose type overrides Equals. When an object's type overrides Equals,
+        /// and the object Equals any object on that list, the validator:
+        /// - Validates that object's own attributes and IValidatableObject. A child that Equals
+        ///   its parent by Id is still checked, so the bypass does not come back.
+        /// - Does not walk into that object's properties. This is what ends the chain.
+        /// Any ancestor on the list counts, not only one of the same type. A computed property
+        /// that alternates between a type and its subclass would never meet one of its own type.
+        /// No getter is read twice.
         /// Structs count as overriding Equals: ValueType.Equals compares their fields, and each
         /// read of a struct through an object or interface property boxes a new copy.
         /// See: https://learn.microsoft.com/dotnet/api/system.valuetype.equals
@@ -143,16 +143,15 @@ namespace RecursiveDataAnnotationsValidation.Tests
         ///
         /// Behavior change: results for graphs with equal-but-distinct objects now include the
         /// previously dropped errors. Models that passed because of the bypass now fail.
-        /// Known gaps, all unchanged from master:
-        /// - Two records that reference each other, and whose other values are also equal,
-        ///   overflow the stack: the record's own generated Equals follows the cycle forever.
-        ///   On master, any two records that referenced each other overflowed.
+        /// Known gaps, all unchanged from v2.2.0:
+        /// - An invalid object below an object that Equals one of its ancestors is not reached,
+        ///   because the walk stops at that object (see Invalid_object_below_a_copy_of_its_ancestor_is_validated).
+        /// - Two records that reference each other overflow the stack when the record's
+        ///   generated Equals reaches the reference before it finds a difference. Equals then
+        ///   follows the cycle forever. On v2.2.0, any two records that referenced each other
+        ///   overflowed (see Records_that_reference_each_other_are_validated).
         /// - A property that returns a new object on each read, on a type that does not override
         ///   Equals, such as `Vector Zero => new Vector()`, overflows the stack.
-        /// - A property that returns a copy of stored data counts as computed, so a copy that
-        ///   Equals an ancestor is not walked.
-        /// The second read runs a getter twice. That happens only when an object Equals an
-        /// object of the same type on its own path.
         /// </summary>
         public class ReferenceEquality
         {
@@ -265,7 +264,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 public List<Folder> Subs { get; set; }
             }
 
-            // The bypass. The second item Equals the first, so on master it counted as already
+            // The bypass. The second item Equals the first, so on v2.2.0 it counted as already
             // validated, and the result was valid=true with no errors.
             [Fact]
             public void Item_with_the_same_Id_as_a_valid_item_is_validated()
@@ -282,8 +281,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.Contains(results, r => r.MemberNames.Contains("Items[1].Name"));
             }
 
-            // The same bypass along a path: a child that Equals its own parent. Sub is stored, so
-            // the check for computed properties (see the class summary) must not stop here.
+            // The same bypass along a path: a child that Equals its own parent. The walk stops at
+            // the child (see the class summary), but the child's own attributes are validated.
             [Fact]
             public void Descendant_with_the_same_Id_as_its_ancestor_is_validated()
             {
@@ -324,7 +323,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
             }
 
             // The same bypass, with the child behind a read-only wrapper. Each read of Children
-            // returns a new wrapper, so the property looks computed even though the child is stored.
+            // returns a new wrapper, so a rule that asks whether the property is computed would
+            // skip this child, even though it is stored.
             [Fact]
             public void Item_in_a_read_only_wrapper_with_the_same_Id_as_its_ancestor_is_validated()
             {
@@ -356,8 +356,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 public override int GetHashCode() => Id;
             }
 
-            // The same bypass with a record. Whether the property is computed decides the skip,
-            // not whether the type is a record.
+            // The same bypass with a record. A record is treated like any other type that
+            // overrides Equals.
             [Fact]
             public void Record_descendant_with_the_same_Id_as_its_ancestor_is_validated()
             {
@@ -370,7 +370,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.Contains(results, r => r.MemberNames.Contains("Sub.Name"));
             }
 
-            // Known gap, the same as on master. The middle folder Equals the root, so the
+            // Known gap, the same as on v2.2.0. The middle folder Equals the root, so the
             // validator checks the middle folder's own attributes but does not walk into it.
             // The invalid folder below it is never reached.
             [Fact(Skip = "Known gap. The walk stops at an object that Equals one of its ancestors.")]
@@ -391,7 +391,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             }
 
             /// <summary>
-            /// A value object:a class with value equality and computed properties that return a
+            /// A value object: a class with value equality and computed properties that return a
             /// new, equal Money on each read. The static and sequence forms are walked too.
             /// </summary>
             public sealed class Money
@@ -415,7 +415,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 public Money Price { get; set; } = new Money(5);
             }
 
-            // Guard. On master, value equality stopped each chain at the second Money(0). If this
+            // Guard. On v2.2.0, value equality stopped each chain at the second Money(0). If this
             // breaks, the stack overflows and kills the test host (see the Origin guards).
             [Fact]
             public void Value_object_property_that_returns_a_new_equal_object_terminates()
@@ -455,8 +455,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 public LazyMoney Price { get; set; } = new LazyMoney(5);
             }
 
-            // Guard. On master, value equality stopped the chain at the second LazyMoney(0). A
-            // check that asks whether the property is computed misses this one, because the
+            // Guard. On v2.2.0, value equality stopped the chain at the second LazyMoney(0). A
+            // rule that asks whether the property is computed misses this one, because the
             // property is stored, and the walk overflows the stack.
             [Fact]
             public void Stored_sequence_that_yields_new_equal_objects_terminates()
@@ -519,7 +519,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 public StaticOriginPoint Corner { get; set; }
             }
 
-            // Guard. On master, value equality stops the walk at the second Origin, because it
+            // Guard. On v2.2.0, value equality stops the walk at the second Origin, because it
             // Equals the first. A reference-equality set alone would never stop: each read is a
             // new instance, so the walk recurses until the stack overflows. A stack overflow
             // cannot be caught and kills the test host, so if this guard breaks, the whole test
@@ -558,7 +558,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 public LinkedRecord Next { get; set; }
             }
 
-            // On master this overflowed the stack. HashSet called the record's generated
+            // On v2.2.0 this overflowed the stack. HashSet called the record's generated
             // GetHashCode, which hashes Next, whose GetHashCode hashes Next again, forever.
             // The reference comparer never calls GetHashCode on the model. This test is not in
             // the spec commit because the overflow would kill the test host there.
