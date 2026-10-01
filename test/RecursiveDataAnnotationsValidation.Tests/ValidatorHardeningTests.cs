@@ -321,9 +321,10 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// validates each one. Items such as ints and strings have no DataAnnotations to check.
         /// Problem: wasted CPU and memory on large payloads. It is a denial-of-service
         /// vector for model-bound input.
-        /// Proposed fix: skip a collection when its element type is a primitive, an enum,
-        /// string or decimal. Find the element type from IEnumerable&lt;T&gt;, or from the array
-        /// element type. The decision is by type, so no enumeration happens.
+        /// Fix: skip a collection when every element type it can yield is a primitive, an enum,
+        /// string, decimal, DateTime, DateTimeOffset, TimeSpan or Guid, or a Nullable of one of
+        /// those. The element type comes from the array element type, or from each IEnumerable&lt;T&gt;
+        /// the collection implements. The decision is by type, so no enumeration happens.
         /// Behavior change: items of these types are no longer passed to the validator. They carry
         /// no attributes, so results do not change. Collections of structs or objects are not
         /// skipped, because their items can have attributes.
@@ -332,23 +333,35 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// </summary>
         public class PrimitiveCollections
         {
-            /// <summary>Records whether anything enumerated it.</summary>
-            public class CountingSequence : IEnumerable<int>
+            public enum Color { Red, Green }
+
+            public struct Point
             {
+                [Range(0, 10)]
+                public int X { get; set; }
+            }
+
+            /// <summary>Records whether anything enumerated it.</summary>
+            public class CountingSequence<T> : IEnumerable<T>
+            {
+                private readonly T[] _items;
+
+                public CountingSequence(params T[] items) => _items = items;
+
                 public int EnumerationCount { get; private set; }
 
-                public IEnumerator<int> GetEnumerator()
+                public IEnumerator<T> GetEnumerator()
                 {
                     EnumerationCount++;
-                    return Enumerable.Range(0, 3).GetEnumerator();
+                    return ((IEnumerable<T>)_items).GetEnumerator();
                 }
 
                 IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
             }
 
-            public class SequenceHolder
+            public class SequenceHolder<T>
             {
-                public CountingSequence Numbers { get; set; } = new CountingSequence();
+                public CountingSequence<T> Items { get; set; }
             }
 
             public class ByteArrayHolder
@@ -356,16 +369,57 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 public byte[] Payload { get; set; } = new byte[1024];
             }
 
-            [Fact(Skip = "Not fixed yet.")]
-            public void Collections_of_primitives_are_not_enumerated()
+            private static (bool Valid, List<ValidationResult> Results, int EnumerationCount) Validate<T>(params T[] items)
             {
-                var model = new SequenceHolder();
-
+                var model = new SequenceHolder<T> { Items = new CountingSequence<T>(items) };
                 var results = new List<ValidationResult>();
                 var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+                return (valid, results, model.Items.EnumerationCount);
+            }
+
+            [Fact]
+            public void Collections_of_primitives_are_not_enumerated()
+            {
+                var (valid, results, enumerationCount) = Validate(0, 1, 2);
 
                 Assert.True(valid);
-                Assert.Equal(0, model.Numbers.EnumerationCount);
+                Assert.Empty(results);
+                Assert.Equal(0, enumerationCount);
+            }
+
+            [Fact]
+            public void Collections_of_other_leaf_types_are_not_enumerated()
+            {
+                Assert.Equal(0, Validate(Color.Red, Color.Green).EnumerationCount);
+                Assert.Equal(0, Validate("a", "b").EnumerationCount);
+                Assert.Equal(0, Validate(1.5m).EnumerationCount);
+                Assert.Equal(0, Validate(DateTime.UtcNow).EnumerationCount);
+                Assert.Equal(0, Validate(DateTimeOffset.UtcNow).EnumerationCount);
+                Assert.Equal(0, Validate(TimeSpan.FromSeconds(1)).EnumerationCount);
+                Assert.Equal(0, Validate(Guid.NewGuid()).EnumerationCount);
+                Assert.Equal(0, Validate<int?>(1, null).EnumerationCount);
+            }
+
+            // Guard. Items of a reference type can carry attributes, so they are still validated.
+            [Fact]
+            public void Collections_of_objects_are_still_enumerated()
+            {
+                var (valid, results, enumerationCount) = Validate(new Child());
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Items[0].Name"));
+                Assert.Equal(1, enumerationCount);
+            }
+
+            // Guard. Items of a user struct can carry attributes, so they are still validated.
+            [Fact]
+            public void Collections_of_structs_are_still_enumerated()
+            {
+                var (valid, results, enumerationCount) = Validate(new Point { X = 11 });
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Items[0].X"));
+                Assert.Equal(1, enumerationCount);
             }
 
             [Fact]
