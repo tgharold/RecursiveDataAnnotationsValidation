@@ -38,11 +38,11 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// The framework's Validator.TryValidateObject accepts a null list and still returns false
         /// for an invalid object. The recursive validator must do the same.
         /// See: https://learn.microsoft.com/dotnet/api/system.componentmodel.dataannotations.validator.tryvalidateobject
-        /// A failure on the root object works with a null list. A failure below the root fails,
-        /// because the recursion adds the nested results to the list the caller passed in.
-        /// The expected result is false, like the framework. Throwing ArgumentNullException for a
-        /// null list would break callers that work today, because a failure on the root object
-        /// already returns false with a null list.
+        /// Up to release 2.2.4, a failure below the root threw NullReferenceException, because the
+        /// recursion added the nested results to the list the caller passed in. A failure on the
+        /// root object already returned false.
+        /// Throwing ArgumentNullException for a null list was not chosen, because it would break
+        /// callers whose null list works today.
         /// </summary>
         public class NullResultsList
         {
@@ -84,7 +84,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.False(Validate(parent));
             }
 
-            [Fact(Skip = "Not fixed yet. A failure in a nested object throws NullReferenceException when the results list is null.")]
+            [Fact]
             public void Failure_in_a_nested_object_returns_false()
             {
                 var parent = new Parent { Title = "t", Child = new Leaf { Name = null } };
@@ -96,7 +96,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.False(valid);
             }
 
-            [Fact(Skip = "Not fixed yet. A failure in a collection item throws NullReferenceException when the results list is null.")]
+            [Fact]
             public void Failure_in_a_collection_item_returns_false()
             {
                 var parent = new Parent { Title = "t", Items = new List<Leaf> { new Leaf { Name = "n" }, new Leaf { Name = null } } };
@@ -108,7 +108,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.False(valid);
             }
 
-            [Fact(Skip = "Not fixed yet. The overload without a ValidationContext throws NullReferenceException for a nested failure when the results list is null.")]
+            [Fact]
             public void Failure_in_a_nested_object_returns_false_without_a_validation_context()
             {
                 var parent = new Parent { Title = "t", Child = new Leaf { Name = null } };
@@ -121,7 +121,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.False(valid);
             }
 
-            [Fact(Skip = "Not fixed yet. The async overload throws NullReferenceException for a nested failure when the results list is null.")]
+            [Fact]
             public async Task Failure_in_a_nested_object_returns_false_async()
             {
                 var parent = new Parent { Title = "t", Child = new Leaf { Name = null } };
