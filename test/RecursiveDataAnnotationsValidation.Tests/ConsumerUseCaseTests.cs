@@ -40,7 +40,9 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// See: https://learn.microsoft.com/dotnet/api/system.componentmodel.dataannotations.validator.tryvalidateobject
         /// A failure on the root object works with a null list. A failure below the root fails,
         /// because the recursion adds the nested results to the list the caller passed in.
-        /// The intended behavior is not decided: return false, or throw ArgumentNullException.
+        /// The expected result is false, like the framework. Throwing ArgumentNullException for a
+        /// null list would break callers that work today, because a failure on the root object
+        /// already returns false with a null list.
         /// </summary>
         public class NullResultsList
         {

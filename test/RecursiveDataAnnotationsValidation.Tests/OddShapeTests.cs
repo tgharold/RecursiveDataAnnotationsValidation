@@ -119,6 +119,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// The validator enumerates the collection, but never validates the collection object.
         /// Its own attributes do not run, and its own properties are not walked.
         /// The items are still validated.
+        /// Whether the attributes of the collection object should run is open. Running them would
+        /// fail models that pass today.
         /// </summary>
         public class CollectionsWithMembersOfTheirOwn
         {
@@ -128,7 +130,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 public string Cursor { get; set; }
             }
 
-            [Fact(Skip = "Not fixed yet. The attributes on the collection object itself do not run.")]
+            [Fact(Skip = "Open. The attributes on the collection object itself do not run, and whether they should is not decided.")]
             public void Attributes_on_the_collection_object_are_validated()
             {
                 var (valid, errors) = Run(new Holder<PagedList<Leaf>> { Value = new PagedList<Leaf> { Cursor = null } });
