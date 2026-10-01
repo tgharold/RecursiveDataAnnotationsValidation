@@ -8,6 +8,10 @@ Breaking changes are marked **BREAKING**.
 
 ## Unreleased
 
+### Changed
+
+- Collections whose items can only be primitives, enums, `string`, `decimal`, `DateTime`, `DateTimeOffset`, `TimeSpan`, `Guid`, or a `Nullable` of one of those are no longer enumerated. These items carry no DataAnnotations, so results do not change. Large payloads such as a `byte[]` validate much faster.
+
 ## 2.2.4 - 2026-10-01
 
 ### Changed
