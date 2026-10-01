@@ -170,6 +170,38 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
             Assert.False(type.IsUnsafeToWalk());
         }
 
+        public class UserUri : Uri
+        {
+            public UserUri(string uriString) : base(uriString)
+            {
+            }
+
+            public Child Owner { get; set; }
+        }
+
+        // A user's subclass is outside the System namespaces, so the properties it adds are walked.
+        // The properties it inherits are declared by Uri, so they are not.
+        [Fact]
+        public void User_subclass_of_a_denied_type_is_not_detected()
+        {
+            Assert.False(typeof(UserUri).IsUnsafeToWalk());
+        }
+
+        [Fact]
+        public void Property_declared_by_a_denied_type_is_not_walked()
+        {
+            Assert.False(typeof(Uri).GetProperty(nameof(Uri.Segments)).IsWalked());
+            Assert.False(typeof(UserUri).GetProperty(nameof(Uri.Segments)).IsWalked());
+            Assert.False(typeof(Type).GetProperty(nameof(Type.DeclaringMethod)).IsWalked());
+            Assert.False(typeof(System.IO.DirectoryInfo).GetProperty(nameof(System.IO.DirectoryInfo.Root)).IsWalked());
+        }
+
+        [Fact]
+        public void Property_added_by_a_user_subclass_of_a_denied_type_is_walked()
+        {
+            Assert.True(typeof(UserUri).GetProperty(nameof(UserUri.Owner)).IsWalked());
+        }
+
         public record BaseRecord;
 
         public record DerivedRecord : BaseRecord;

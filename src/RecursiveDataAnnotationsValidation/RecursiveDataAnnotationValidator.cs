@@ -189,13 +189,6 @@ namespace RecursiveDataAnnotationsValidation
                 return true;
             }
 
-            //reading the properties of some framework types throws or never ends, such as a relative
-            //Uri or a DirectoryInfo, and they carry no attributes (see IsUnsafeToWalk)
-            if (type.IsUnsafeToWalk())
-            {
-                return true;
-            }
-
             //short-circuit to avoid infinite loops on cyclical object graphs
             if (validatedObjects.Contains(obj))
             {
@@ -218,6 +211,8 @@ namespace RecursiveDataAnnotationsValidation
 
             var result = TryValidateObject(obj, validationResults, serviceProvider, validationContextItems);
 
+            //IsWalked leaves out properties declared by framework types that throw or never end when
+            //read, such as Uri.Segments on a relative Uri or DirectoryInfo.Root (see IsUnsafeToWalk)
             var properties = type.GetProperties().Where(prop => prop.IsWalked()).ToList();
 
             foreach (var property in properties)

@@ -460,8 +460,10 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// - DirectoryInfo and FileInfo overflowed the stack, which cannot be caught. Each read of
         ///   DirectoryInfo.Root returns a new DirectoryInfo that has its own Root, and neither
         ///   overrides Equals, so the walk never met an object it had seen.
-        /// These types are now on the validator's deny list (IsUnsafeToWalk), so they are neither
-        /// validated nor walked. ValidatorHardeningTests.FrameworkTypes covers the rest of the list.
+        /// These types are now on the validator's deny list (IsUnsafeToWalk). The object is still
+        /// validated, but the walk skips the properties these framework types declare.
+        /// ValidatorHardeningTests.FrameworkTypes covers the rest of the list, and
+        /// UriValidationTests shows how to validate a Uri.
         /// If the deny list loses DirectoryInfo or FileInfo, those tests crash the test host
         /// instead of failing.
         /// See: https://learn.microsoft.com/dotnet/api/system.uri.segments

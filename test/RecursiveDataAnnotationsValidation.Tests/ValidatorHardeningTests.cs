@@ -687,11 +687,13 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// A Tuple&lt;Child, int&gt; property reports "Pair.Item1.Name". A Dictionary&lt;string, Child&gt;
         /// reports "Map[0].Value.Name", because each item is a boxed KeyValuePair, which lives in
         /// System.Collections.Generic.
-        /// Fix: a narrow deny list (IsUnsafeToWalk). An object of a denied type, or a type derived
-        /// from one, is neither validated nor walked. The check runs at the top of the recursion,
-        /// so it also covers collection items, such as a List&lt;Type&gt;. The list is MemberInfo
-        /// (which covers Type and MethodInfo), Assembly, Module, Delegate, Uri and FileSystemInfo.
-        /// OddShapeTests covers Uri, Delegate, DirectoryInfo and FileInfo.
+        /// Fix: a narrow deny list (IsUnsafeToWalk). The walk skips each property declared by a
+        /// denied type, or by a framework type derived from one, such as Type.DeclaringMethod or
+        /// Uri.Segments. The object itself is still validated, and a user's subclass still has the
+        /// properties it adds walked. The namespace counts only for types on the deny list, so the
+        /// rejected rule above does not come back. The list is MemberInfo (which covers Type and
+        /// MethodInfo), Assembly, Module, Delegate, Uri and FileSystemInfo.
+        /// OddShapeTests covers Delegate, DirectoryInfo and FileInfo, and UriValidationTests covers Uri.
         /// See: https://learn.microsoft.com/dotnet/api/system.type.declaringmethod
         /// </summary>
         public class FrameworkTypes

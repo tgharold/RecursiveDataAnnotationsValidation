@@ -28,7 +28,8 @@ namespace RecursiveDataAnnotationsValidation.Extensions
             new ConcurrentDictionary<Type, bool>();
 
         // Framework types whose properties throw, or never end, when the validator walks them.
-        // They carry no validation attributes.
+        // They carry no validation attributes. Only the properties these types and their framework
+        // subclasses declare are skipped, so a user subclass still has its own properties walked.
         private static readonly Type[] UnsafeToWalkTypes =
         {
             typeof(MemberInfo),     // Type, MethodInfo: DeclaringMethod and others throw
@@ -84,7 +85,8 @@ namespace RecursiveDataAnnotationsValidation.Extensions
 
         /// <summary>
         /// True for a property the validator walks into: readable, not an indexer, not marked
-        /// [SkipRecursiveValidation], and of a reference type other than string.
+        /// [SkipRecursiveValidation], of a reference type other than string, and not declared by a
+        /// framework type whose properties are unsafe to read (see <see cref="IsUnsafeToWalk"/>).
         /// </summary>
         public static bool IsWalked(this PropertyInfo property)
         {
@@ -92,7 +94,8 @@ namespace RecursiveDataAnnotationsValidation.Extensions
                 && !property.PropertyType.IsValueType
                 && property.CanRead
                 && property.GetIndexParameters().Length == 0
-                && !property.IsDefined(typeof(SkipRecursiveValidationAttribute), false);
+                && !property.IsDefined(typeof(SkipRecursiveValidationAttribute), false)
+                && !property.DeclaringType.IsUnsafeToWalk();
         }
 
         /// <summary>
@@ -107,14 +110,23 @@ namespace RecursiveDataAnnotationsValidation.Extensions
         }
 
         /// <summary>
-        /// True for a framework type that the validator neither validates nor walks into, because
-        /// reading its properties throws or never ends. Types derived from one count too. See
-        /// <see cref="UnsafeToWalkTypes"/>.
+        /// True for a framework type whose own properties the validator does not walk, because
+        /// reading them throws or never ends, such as Uri.Segments on a relative Uri. Framework
+        /// types derived from one count too, such as RuntimeType, the type of typeof(...).
+        /// A type outside the System namespaces, such as a user's subclass of Uri, does not count,
+        /// so the properties it adds are walked. See <see cref="UnsafeToWalkTypes"/>.
         /// </summary>
         public static bool IsUnsafeToWalk(this Type type)
         {
             return UnsafeToWalkCache.GetOrAdd(type, t =>
-                UnsafeToWalkTypes.Any(unsafeType => unsafeType.IsAssignableFrom(t)));
+                IsInSystemNamespace(t)
+                && UnsafeToWalkTypes.Any(unsafeType => unsafeType.IsAssignableFrom(t)));
+        }
+
+        private static bool IsInSystemNamespace(Type type)
+        {
+            var ns = type.Namespace;
+            return ns != null && (ns == "System" || ns.StartsWith("System.", StringComparison.Ordinal));
         }
 
         private static Type[] FindElementTypes(Type collectionType)
