@@ -10,7 +10,7 @@ Breaking changes are marked **BREAKING**.
 
 ### Changed
 
-- Collections whose items are declared as primitives, enums, `string`, `decimal`, `DateTime`, `DateTimeOffset`, `TimeSpan` or `Guid`, as a `Nullable` of one of those, or as a `KeyValuePair` of two of those, are no longer enumerated. A collection is still enumerated when its item type has a validation attribute, such as a custom attribute on an enum or one added with `TypeDescriptor.AddAttributes`, so the validation results do not change. Large payloads such as a `byte[]` or a `Dictionary<string, string>` validate much faster. A lazy sequence of these types, such as a LINQ query or an `IQueryable<int>`, is no longer run during validation, so an exception it throws while enumerating no longer surfaces.
+- A collection is no longer enumerated when its declared item type has nothing to validate: a value type or sealed class with no validation attribute on the type or its properties, no `IValidatableObject`, and no property the validator walks into. This covers primitives, enums, `string`, `DateTime`, `Guid`, `DateOnly`, `Nullable` values and `KeyValuePair` items of these types, and user structs without attributes. Attributes added with `TypeDescriptor.AddAttributes` count, so the validation results do not change. Large payloads such as a `byte[]` or a `Dictionary<string, string>` validate much faster. A lazy sequence of these types, such as a LINQ query or an `IQueryable<int>`, is no longer run during validation, so an exception it throws while enumerating no longer surfaces.
 
 ## 2.2.4 - 2026-10-01
 
