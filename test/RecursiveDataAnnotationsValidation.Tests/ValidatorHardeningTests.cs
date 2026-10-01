@@ -125,13 +125,15 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// these only because of value equality.
         /// So the validator keeps a second list: the objects on the path from the root to the
         /// current object whose type overrides Equals. When an object's type overrides Equals,
-        /// and the object Equals any object on that list, the validator:
+        /// and the object Equals an object of a related type on that list, the validator:
         /// - Validates that object's own attributes and IValidatableObject. A child that Equals
         ///   its parent by Id is still checked, so the bypass does not come back.
         /// - Does not walk into that object's properties. This is what ends the chain.
-        /// Any ancestor on the list counts, not only one of the same type. A computed property
-        /// that alternates between a type and its subclass would never meet one of its own type.
-        /// No getter is read twice.
+        /// A related type is the object's own type, a base of it, or a type derived from it. A
+        /// computed property that alternates between a type and its subclass would never meet
+        /// one of its own type, so the same type alone is not enough. Unrelated types are not
+        /// compared, so an Equals that casts without a type check does not throw (see
+        /// Equals_that_casts_is_not_called_with_an_unrelated_ancestor). No getter is read twice.
         /// Structs count as overriding Equals: ValueType.Equals compares their fields, and each
         /// read of a struct through an object or interface property boxes a new copy.
         /// See: https://learn.microsoft.com/dotnet/api/system.valuetype.equals
