@@ -151,7 +151,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// - Two records that reference each other overflow the stack when the record's
         ///   generated Equals reaches the reference before it finds a difference. Equals then
         ///   follows the cycle forever. On v2.2.0, any two records that referenced each other
-        ///   overflowed (see Records_that_reference_each_other_are_validated).
+        ///   overflowed (see Records_that_reference_each_other_are_validated). On .NET Framework
+        ///   they still always overflow, inside the framework's Validator (see that test).
         /// - A property that returns a new object on each read, on a type that does not override
         ///   Equals, such as `Vector Zero => new Vector()`, overflows the stack.
         /// </summary>
@@ -610,7 +611,18 @@ namespace RecursiveDataAnnotationsValidation.Tests
             // before it reaches Next. With Next declared first, or with equal names, Equals
             // follows the cycle forever and the stack overflows. That is a known gap.
             // See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/record#value-equality
+            // Skipped on .NET Framework. There, the framework's Validator calls
+            // TypeDescriptor.GetProperties(instance), and TypeDescriptor looks the instance up in a
+            // hashtable that calls the model's GetHashCode. The overflow happens inside Validator,
+            // so the recursive validator cannot prevent it. .NET 8 and later do not call it.
+            // NETFRAMEWORK is a preprocessor symbol the SDK defines for .NET Framework targets.
+            // See: https://github.com/microsoft/referencesource/blob/master/System.ComponentModel.DataAnnotations/DataAnnotations/Validator.cs
+            // See: https://learn.microsoft.com/dotnet/standard/frameworks#preprocessor-symbols
+#if NETFRAMEWORK
+            [Fact(Skip = "On .NET Framework, Validator calls the record's GetHashCode, which follows the cycle.")]
+#else
             [Fact]
+#endif
             public void Records_that_reference_each_other_are_validated()
             {
                 var first = new LinkedRecord { Name = "first" };
