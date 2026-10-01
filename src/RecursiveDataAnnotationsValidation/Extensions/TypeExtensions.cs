@@ -17,8 +17,8 @@ namespace RecursiveDataAnnotationsValidation.Extensions
         // Attributes can be added at runtime with TypeDescriptor.AddAttributes, which raises
         // TypeDescriptor.Refreshed. Each cached answer carries the version it was computed under,
         // so an answer computed while a refresh happened is recomputed on the next lookup.
-        private static readonly ConcurrentDictionary<Type, (int Version, bool HasAttributes)> ValidationAttributesCache =
-            new ConcurrentDictionary<Type, (int Version, bool HasAttributes)>();
+        private static readonly ConcurrentDictionary<Type, (int Version, bool IsLeaf)> LeafTypeCache =
+            new ConcurrentDictionary<Type, (int Version, bool IsLeaf)>();
 
         private static int _typeDescriptorVersion;
 
@@ -29,36 +29,38 @@ namespace RecursiveDataAnnotationsValidation.Extensions
 
         /// <summary>
         /// True when every element type the collection declares is a leaf type (see
-        /// <see cref="IsLeafType"/>), or a KeyValuePair of two leaf types. The element types come
-        /// from the array element type, or from each IEnumerable&lt;T&gt; the collection implements.
-        /// Decided from the type alone, so nothing is enumerated.
+        /// <see cref="IsLeafType"/>). The element types come from the array element type, or from
+        /// each IEnumerable&lt;T&gt; the collection implements. Decided from the type alone, so
+        /// nothing is enumerated.
         /// </summary>
         public static bool IsCollectionOfLeafType(this Type collectionType)
         {
             var elementTypes = ElementTypesCache.GetOrAdd(collectionType, FindElementTypes);
 
-            return elementTypes.Length > 0 && elementTypes.All(IsLeafElementType);
+            return elementTypes.Length > 0 && elementTypes.All(IsLeafType);
         }
 
         /// <summary>
-        /// True for types with nothing to validate: primitives, enums, string, decimal, DateTime,
-        /// DateTimeOffset, TimeSpan and Guid, and Nullable of any of those, as long as no
-        /// validation attribute is attached to the type, in source or at runtime.
+        /// True when validating an item of this type can never produce a result. A Nullable&lt;T&gt;
+        /// is checked as T. The type must be a value type or a sealed class, so an item cannot be
+        /// a derived type with its own attributes. It must also pass all four checks:
+        /// 1. No validation attribute on the type.
+        /// 2. No validation attribute on any of its properties.
+        /// 3. It does not implement IValidatableObject.
+        /// 4. No property the validator walks into (see <see cref="IsWalked"/>).
+        /// Checks 1 and 2 use TypeDescriptor, like Validator, so attributes added at runtime count.
         /// </summary>
         public static bool IsLeafType(this Type type)
         {
             type = Nullable.GetUnderlyingType(type) ?? type;
 
-            var isLeafKind = type.IsPrimitive
-                || type.IsEnum
-                || type == typeof(string)
-                || type == typeof(decimal)
-                || type == typeof(DateTime)
-                || type == typeof(DateTimeOffset)
-                || type == typeof(TimeSpan)
-                || type == typeof(Guid);
+            var version = System.Threading.Volatile.Read(ref _typeDescriptorVersion);
+            if (LeafTypeCache.TryGetValue(type, out var cached) && cached.Version == version)
+                return cached.IsLeaf;
 
-            return isLeafKind && !HasValidationAttributes(type);
+            var isLeaf = FindIsLeafType(type);
+            LeafTypeCache[type] = (version, isLeaf);
+            return isLeaf;
         }
 
         /// <summary>
@@ -84,13 +86,12 @@ namespace RecursiveDataAnnotationsValidation.Extensions
                 .ToArray();
         }
 
-        private static bool IsLeafElementType(Type elementType)
+        private static bool FindIsLeafType(Type type)
         {
-            if (elementType.IsGenericType && elementType.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
-                return !HasValidationAttributes(elementType)
-                    && elementType.GetGenericArguments().All(IsLeafType);
-
-            return elementType.IsLeafType();
+            return (type.IsValueType || type.IsSealed)
+                && !HasValidationAttributes(type)
+                && !typeof(IValidatableObject).IsAssignableFrom(type)
+                && !type.GetProperties().Any(IsWalked);
         }
 
         /// <summary>
@@ -98,17 +99,6 @@ namespace RecursiveDataAnnotationsValidation.Extensions
         /// type and on its properties. TypeDescriptor includes attributes added at runtime.
         /// </summary>
         private static bool HasValidationAttributes(Type type)
-        {
-            var version = System.Threading.Volatile.Read(ref _typeDescriptorVersion);
-            if (ValidationAttributesCache.TryGetValue(type, out var cached) && cached.Version == version)
-                return cached.HasAttributes;
-
-            var hasAttributes = FindValidationAttributes(type);
-            ValidationAttributesCache[type] = (version, hasAttributes);
-            return hasAttributes;
-        }
-
-        private static bool FindValidationAttributes(Type type)
         {
             return TypeDescriptor.GetAttributes(type).OfType<ValidationAttribute>().Any()
                 || TypeDescriptor.GetProperties(type).Cast<PropertyDescriptor>()
