@@ -58,7 +58,7 @@ dotnet test test/RecursiveDataAnnotationsValidation.Tests/RecursiveDataAnnotatio
 ## Target Frameworks
 
 - Main library targets `.NET Standard 2.0`
-- Test project targets `net8.0`
+- Test project targets `net8.0` and `net10.0`. Add `-p:IncludeNetFramework=true` to also target `net481`, which runs only on Windows. CI runs it there.
 
 ## Development Notes
 
