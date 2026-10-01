@@ -10,7 +10,7 @@ namespace RecursiveDataAnnotationsValidation
         /// <summary>Runs validation on an object.</summary>
         /// <param name="obj">The object being validated.</param>
         /// <param name="validationContext">Validation context.</param>
-        /// <param name="validationResults">A collection that will be populated if validation errors occur.</param>
+        /// <param name="validationResults">A collection that will be populated if validation errors occur. Can be null when only the return value is needed.</param>
         /// <returns>Returns true if all validation passes.</returns>
         bool TryValidateObjectRecursive(
             object obj,
@@ -20,7 +20,7 @@ namespace RecursiveDataAnnotationsValidation
 
         /// <summary>Runs validation on an object.</summary>
         /// <param name="obj">The object being validated.</param>
-        /// <param name="validationResults">A collection that will be populated if validation errors occur.</param>
+        /// <param name="validationResults">A collection that will be populated if validation errors occur. Can be null when only the return value is needed.</param>
         /// <param name="validationContextItems">Validation context items.</param>
         /// <returns>Returns true if all validation passes.</returns>
         bool TryValidateObjectRecursive(
