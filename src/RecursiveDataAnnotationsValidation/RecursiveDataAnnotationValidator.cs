@@ -211,6 +211,8 @@ namespace RecursiveDataAnnotationsValidation
 
             var result = TryValidateObject(obj, validationResults, serviceProvider, validationContextItems);
 
+            //IsWalked leaves out properties declared by framework types that throw or never end when
+            //read, such as Uri.Segments on a relative Uri or DirectoryInfo.Root (see IsUnsafeToWalk)
             var properties = type.GetProperties().Where(prop => prop.IsWalked()).ToList();
 
             foreach (var property in properties)

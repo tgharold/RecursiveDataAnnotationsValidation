@@ -682,17 +682,19 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// such as Type, Stream or IFormFile. It reads all of their reference-type properties.
         /// Some of those getters throw. For example Type.DeclaringMethod throws
         /// InvalidOperationException. Framework objects also carry no DataAnnotations.
-        /// Problem: a model with a Type property cannot be validated. The walk is also slow.
         /// Rejected fix: skipping every type in a System.* or Microsoft.* namespace. User objects
-        /// inside framework wrappers are validated today, and that rule would silently stop it.
+        /// inside framework wrappers are validated, and that rule would silently stop it.
         /// A Tuple&lt;Child, int&gt; property reports "Pair.Item1.Name". A Dictionary&lt;string, Child&gt;
         /// reports "Map[0].Value.Name", because each item is a boxed KeyValuePair, which lives in
         /// System.Collections.Generic.
-        /// Proposed fix (needs a decision): a narrow deny list (MemberInfo, which covers Type,
-        /// plus Assembly, Module and Delegate), checked only for non-collection property values.
-        /// Add guard tests for the tuple and dictionary cases first.
-        /// Behavior change: values of the denied types are no longer walked. They carry no
-        /// DataAnnotations, and a Type property throws today, so no caller relies on the walk.
+        /// Fix: a narrow deny list (IsUnsafeToWalk). The walk skips each property declared by a
+        /// denied type, or by a framework type derived from one, such as Type.DeclaringMethod or
+        /// Uri.Segments. The object itself is still validated, and a user's subclass still has the
+        /// properties it adds walked. The namespace counts only for types on the deny list, so the
+        /// rejected rule above does not come back. The list is MemberInfo (which covers Type and
+        /// MethodInfo), Assembly, Module, Delegate, Uri and FileSystemInfo.
+        /// OddShapeTests covers Delegate, DirectoryInfo and FileInfo, and UriValidationTests covers Uri.
+        /// See: https://learn.microsoft.com/dotnet/api/system.type.declaringmethod
         /// </summary>
         public class FrameworkTypes
         {
@@ -706,7 +708,28 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 public Stream Content { get; set; } = new GZipStream(new MemoryStream(), CompressionMode.Compress);
             }
 
-            [Fact(Skip = "Not fixed yet. The framework-type skip rule needs a decision.")]
+            public class Child
+            {
+                [Required]
+                public string Name { get; set; }
+            }
+
+            public class Holder<T>
+            {
+                public T Value { get; set; }
+            }
+
+            private static (bool Valid, Exception Error) Run(object model)
+            {
+                var results = new List<ValidationResult>();
+                var valid = false;
+                var ex = Record.Exception(() =>
+                    valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results));
+
+                return (valid && results.Count == 0, ex);
+            }
+
+            [Fact]
             public void Type_property_does_not_throw()
             {
                 var results = new List<ValidationResult>();
@@ -717,6 +740,81 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.Null(ex);
                 Assert.True(valid);
                 Assert.Empty(results);
+            }
+
+            [Fact]
+            public void Method_info_property_does_not_throw()
+            {
+                var (valid, ex) = Run(new Holder<System.Reflection.MethodInfo> { Value = typeof(Child).GetMethod("ToString") });
+
+                Assert.Null(ex);
+                Assert.True(valid);
+            }
+
+            [Fact]
+            public void Assembly_and_module_properties_do_not_throw()
+            {
+                var assembly = typeof(Child).Assembly;
+
+                var (assemblyValid, assemblyEx) = Run(new Holder<System.Reflection.Assembly> { Value = assembly });
+                var (moduleValid, moduleEx) = Run(new Holder<System.Reflection.Module> { Value = assembly.ManifestModule });
+
+                Assert.Null(assemblyEx);
+                Assert.True(assemblyValid);
+                Assert.Null(moduleEx);
+                Assert.True(moduleValid);
+            }
+
+            // The check runs for collection items too, not only for property values.
+            [Fact]
+            public void List_of_types_does_not_throw()
+            {
+                var (valid, ex) = Run(new Holder<List<Type>> { Value = new List<Type> { typeof(string), typeof(Child) } });
+
+                Assert.Null(ex);
+                Assert.True(valid);
+            }
+
+            [Fact]
+            public void Type_in_an_object_array_does_not_throw()
+            {
+                var (valid, ex) = Run(new Holder<object[]> { Value = new object[] { typeof(string) } });
+
+                Assert.Null(ex);
+                Assert.True(valid);
+            }
+
+            // An exception that was thrown has a TargetSite, a MethodBase. Walking it used to throw.
+            [Fact]
+            public void Thrown_exception_property_does_not_throw()
+            {
+                Exception thrown;
+                try
+                {
+                    throw new InvalidOperationException("test");
+                }
+                catch (InvalidOperationException caught)
+                {
+                    thrown = caught;
+                }
+
+                var (valid, ex) = Run(new Holder<Exception> { Value = thrown });
+
+                Assert.Null(ex);
+                Assert.True(valid);
+            }
+
+            // Guard. A tuple is a framework type that holds user objects, so it is still walked.
+            [Fact]
+            public void Tuple_of_objects_is_still_validated()
+            {
+                var model = new Holder<Tuple<Child, int>> { Value = Tuple.Create(new Child(), 1) };
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Value.Item1.Name"));
             }
 
             // Guard. A Stream does not fail, because the validator only reads reference-type

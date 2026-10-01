@@ -132,6 +132,76 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
             Assert.False(type.IsCollectionOfLeafType());
         }
 
+        // Framework types whose properties throw or never end when walked, and types derived from them.
+        [Theory]
+        [InlineData(typeof(Type))]
+        [InlineData(typeof(System.Reflection.MethodInfo))]
+        [InlineData(typeof(System.Reflection.Assembly))]
+        [InlineData(typeof(System.Reflection.Module))]
+        [InlineData(typeof(Action))]
+        [InlineData(typeof(Func<int>))]
+        [InlineData(typeof(Uri))]
+        [InlineData(typeof(System.IO.DirectoryInfo))]
+        [InlineData(typeof(System.IO.FileInfo))]
+        public void Unsafe_to_walk_type_is_detected(Type type)
+        {
+            Assert.True(type.IsUnsafeToWalk());
+        }
+
+        [Fact]
+        public void Runtime_type_object_is_unsafe_to_walk()
+        {
+            // typeof(...) returns a RuntimeType, which derives from Type.
+            Assert.True(typeof(string).GetType().IsUnsafeToWalk());
+        }
+
+        // Framework types that hold user objects, or that do not throw, are still walked.
+        [Theory]
+        [InlineData(typeof(object))]
+        [InlineData(typeof(Child))]
+        [InlineData(typeof(Tuple<Child, int>))]
+        [InlineData(typeof(KeyValuePair<string, Child>))]
+        [InlineData(typeof(List<Child>))]
+        [InlineData(typeof(System.IO.Stream))]
+        [InlineData(typeof(Exception))]
+        [InlineData(typeof(System.Threading.Tasks.Task<Child>))]
+        public void Walkable_type_is_not_detected(Type type)
+        {
+            Assert.False(type.IsUnsafeToWalk());
+        }
+
+        public class UserUri : Uri
+        {
+            public UserUri(string uriString) : base(uriString)
+            {
+            }
+
+            public Child Owner { get; set; }
+        }
+
+        // A user's subclass is outside the System namespaces, so the properties it adds are walked.
+        // The properties it inherits are declared by Uri, so they are not.
+        [Fact]
+        public void User_subclass_of_a_denied_type_is_not_detected()
+        {
+            Assert.False(typeof(UserUri).IsUnsafeToWalk());
+        }
+
+        [Fact]
+        public void Property_declared_by_a_denied_type_is_not_walked()
+        {
+            Assert.False(typeof(Uri).GetProperty(nameof(Uri.Segments)).IsWalked());
+            Assert.False(typeof(UserUri).GetProperty(nameof(Uri.Segments)).IsWalked());
+            Assert.False(typeof(Type).GetProperty(nameof(Type.DeclaringMethod)).IsWalked());
+            Assert.False(typeof(System.IO.DirectoryInfo).GetProperty(nameof(System.IO.DirectoryInfo.Root)).IsWalked());
+        }
+
+        [Fact]
+        public void Property_added_by_a_user_subclass_of_a_denied_type_is_walked()
+        {
+            Assert.True(typeof(UserUri).GetProperty(nameof(UserUri.Owner)).IsWalked());
+        }
+
         public record BaseRecord;
 
         public record DerivedRecord : BaseRecord;
