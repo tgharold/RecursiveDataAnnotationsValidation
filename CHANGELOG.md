@@ -16,6 +16,7 @@ Breaking changes are marked **BREAKING**.
 - Release workflow: run the tests on .NET 8, .NET 10 and .NET Framework 4.8.1, on Linux and Windows, before publishing.
 - The recursive validator no longer calls `GetHashCode` on your objects. It calls `Equals` only to compare an object with its ancestors of the same type, a base type or a derived type. On .NET Framework, the framework's `Validator` still calls `GetHashCode`, through `TypeDescriptor`.
 - README: describe how shared objects, cycles and computed properties are handled.
+- The package README is now the repository README, so it also includes the build status and the history and attribution section. The "Legacy" section is renamed "History and attribution".
 
 ### Fixed
 
