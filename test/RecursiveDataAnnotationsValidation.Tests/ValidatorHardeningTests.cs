@@ -108,14 +108,25 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// Equals and GetHashCode. Two different objects that compare as equal count as
         /// "already validated", so the second one is never checked.
         /// Records (value equality) and classes with a custom Equals both trigger this.
-        /// Problem: real validation errors are silently dropped. A caller can bypass validation
-        /// by sending equal-looking invalid items. A custom GetHashCode also runs on
-        /// untrusted objects.
+        /// Problem: with an Equals keyed on an Id, a valid item followed by an invalid item with
+        /// the same Id returns valid=true with no errors. The invalid item bypasses validation.
+        /// Records cannot bypass validation this way, because equal records have the same values
+        /// and so the same validity. They only lose the error paths for the duplicates.
+        /// A custom GetHashCode also runs on untrusted objects.
         /// Proposed fix: add a small internal reference-equality comparer (netstandard2.0 has no
         /// ReferenceEqualityComparer). It uses ReferenceEquals and RuntimeHelpers.GetHashCode.
         /// Pass it to both `new HashSet&lt;object&gt;()` calls in RecursiveDataAnnotationValidator.
+        /// Order: land this with or after the primitive-collection skip (see PrimitiveCollections).
+        /// Today, boxed primitives in a collection are de-duplicated by value, so a byte[] of
+        /// zeros validates one item. With reference equality, every boxed item is validated and
+        /// kept in the set. For 1M items that is about 10 times slower.
+        /// Risk: a computed property that returns a new, equal instance on each read, such as
+        /// `Point Origin => new Point(0, 0)` on a record, stops today only because of value
+        /// equality. With reference equality it recurses until the stack overflows. This needs
+        /// a decision together with the max-depth item.
         /// Behavior change: results for graphs with equal-but-distinct objects now include the
-        /// previously dropped errors. That is a bug fix, but a changelog entry is needed.
+        /// previously dropped errors. Models that passed because of the bypass now fail.
+        /// That is a bug fix, but it needs a changelog entry.
         /// </summary>
         public class ReferenceEquality
         {
@@ -248,16 +259,17 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// such as Type, Stream or IFormFile. It reads all of their reference-type properties.
         /// Some of those getters throw. For example Type.DeclaringMethod throws
         /// InvalidOperationException. Framework objects also carry no DataAnnotations.
-        /// Problem: a model with a Type property cannot be validated. The walk is also slow and
-        /// exposes internals of framework objects.
-        /// Proposed fix (needs a decision): do not recurse into objects whose type lives in a
-        /// framework namespace (System.* or Microsoft.*). Alternatives: a deny list (Type,
-        /// MemberInfo, Assembly, Stream, Delegate), or catching getter exceptions.
-        /// The namespace rule is the simplest. It also covers types we did not list, such as
-        /// IFormFile.
-        /// Behavior change: framework types are no longer validated. This only matters if someone
-        /// relies on attributes inside framework objects, which is unlikely. Collections are
-        /// handled separately and are not affected.
+        /// Problem: a model with a Type property cannot be validated. The walk is also slow.
+        /// Rejected fix: skipping every type in a System.* or Microsoft.* namespace. User objects
+        /// inside framework wrappers are validated today, and that rule would silently stop it.
+        /// A Tuple&lt;Child, int&gt; property reports "Pair.Item1.Name". A Dictionary&lt;string, Child&gt;
+        /// reports "Map[0].Value.Name", because each item is a boxed KeyValuePair, which lives in
+        /// System.Collections.Generic.
+        /// Proposed fix (needs a decision): a narrow deny list (MemberInfo, which covers Type,
+        /// plus Assembly, Module and Delegate), checked only for non-collection property values.
+        /// Add guard tests for the tuple and dictionary cases first.
+        /// Behavior change: values of the denied types are no longer walked. They carry no
+        /// DataAnnotations, and a Type property throws today, so no caller relies on the walk.
         /// </summary>
         public class FrameworkTypes
         {
