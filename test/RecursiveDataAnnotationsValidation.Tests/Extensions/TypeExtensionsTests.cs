@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using RecursiveDataAnnotationsValidation.Extensions;
 using Xunit;
 
@@ -11,6 +12,15 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
         public class Child
         {
         }
+
+        [AttributeUsage(AttributeTargets.Enum)]
+        public class AlwaysInvalidAttribute : ValidationAttribute
+        {
+            public override bool IsValid(object value) => false;
+        }
+
+        [AlwaysInvalid]
+        public enum CheckedColor { Red }
 
         /// <summary>Yields both ints and objects, so it must not be skipped.</summary>
         public class MixedSequence : IEnumerable<int>, IEnumerable<Child>
@@ -43,6 +53,9 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
         [InlineData(typeof(List<Child>))]
         [InlineData(typeof(Dictionary<string, Child>))]
         [InlineData(typeof(Dictionary<Child, int>))]
+        [InlineData(typeof(CheckedColor[]))]
+        [InlineData(typeof(List<CheckedColor?>))]
+        [InlineData(typeof(Dictionary<string, CheckedColor>))]
         [InlineData(typeof(ArrayList))]
         [InlineData(typeof(MixedSequence))]
         public void Collection_that_can_yield_other_types_is_not_detected(Type type)

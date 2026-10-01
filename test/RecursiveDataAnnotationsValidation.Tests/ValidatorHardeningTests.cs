@@ -400,6 +400,9 @@ namespace RecursiveDataAnnotationsValidation.Tests
             // No attribute in source. A test adds one at runtime with TypeDescriptor.
             public enum RuntimeCheckedColor { Red, Green }
 
+            // No attribute in source. A test adds one after a first validation.
+            public enum LateCheckedColor { Red, Green }
+
             public struct Point
             {
                 [Range(0, 10)]
@@ -545,6 +548,35 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 finally
                 {
                     TypeDescriptor.RemoveProvider(provider, typeof(RuntimeCheckedColor));
+                }
+            }
+
+            // Guard. The validator caches whether a type has validation attributes. This test
+            // checks that the cache notices an attribute added after the first validation.
+            // TypeDescriptor.AddAttributes raises the TypeDescriptor.Refreshed event, and the
+            // validator listens for it. The first validation must skip the collection
+            // (EnumerationCount 0). Otherwise Validator would cache this type with no attributes
+            // and the second validation could not fail, whatever the skip logic did.
+            // See: https://learn.microsoft.com/dotnet/api/system.componentmodel.typedescriptor.refreshed
+            [Fact]
+            public void Validation_attribute_added_after_first_validation_is_seen()
+            {
+                var before = Validate(LateCheckedColor.Red, (LateCheckedColor)99);
+                Assert.True(before.Valid);
+                Assert.Equal(0, before.EnumerationCount);
+
+                var provider = TypeDescriptor.AddAttributes(typeof(LateCheckedColor), new DefinedValueAttribute());
+                try
+                {
+                    var (valid, results, enumerationCount) = Validate(LateCheckedColor.Red, (LateCheckedColor)99);
+
+                    Assert.False(valid);
+                    Assert.Single(results);
+                    Assert.Equal(1, enumerationCount);
+                }
+                finally
+                {
+                    TypeDescriptor.RemoveProvider(provider, typeof(LateCheckedColor));
                 }
             }
 
