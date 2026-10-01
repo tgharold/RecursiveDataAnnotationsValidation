@@ -131,5 +131,41 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
         {
             Assert.False(type.IsCollectionOfLeafType());
         }
+
+        public record BaseRecord;
+
+        public record DerivedRecord : BaseRecord;
+
+        public class KeyedById
+        {
+            public int Id { get; set; }
+
+            public override bool Equals(object obj) => obj is KeyedById other && other.Id == Id;
+            public override int GetHashCode() => Id;
+        }
+
+        // Inherits the override from KeyedById.
+        public class DerivedKeyedById : KeyedById
+        {
+        }
+
+        // A record overrides Equals in generated code. A struct inherits ValueType.Equals,
+        // which overrides object.Equals and compares the fields.
+        // See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/record#value-equality
+        // See: https://learn.microsoft.com/dotnet/api/system.valuetype.equals
+        [Theory]
+        [InlineData(typeof(BaseRecord), true)]
+        [InlineData(typeof(DerivedRecord), true)]
+        [InlineData(typeof(KeyedById), true)]
+        [InlineData(typeof(DerivedKeyedById), true)]
+        [InlineData(typeof(PlainPoint), true)]
+        [InlineData(typeof(string), true)]
+        [InlineData(typeof(Child), false)]
+        [InlineData(typeof(SealedTag), false)]
+        [InlineData(typeof(object), false)]
+        public void Equals_override_is_detected(Type type, bool overridesEquals)
+        {
+            Assert.Equal(overridesEquals, type.OverridesEquals());
+        }
     }
 }

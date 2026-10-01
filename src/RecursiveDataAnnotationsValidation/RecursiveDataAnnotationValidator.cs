@@ -50,7 +50,8 @@ namespace RecursiveDataAnnotationsValidation
             return TryValidateObjectRecursive(
                 obj,
                 validationResults,
-                new HashSet<object>(),
+                new HashSet<object>(ObjectReferenceComparer.Instance),
+                new List<object>(),
                 validationContextItems
                 );
         }
@@ -94,7 +95,8 @@ namespace RecursiveDataAnnotationsValidation
             return await Task.Run(() => TryValidateObjectRecursive(
                 obj,
                 validationResults,
-                new HashSet<object>(),
+                new HashSet<object>(ObjectReferenceComparer.Instance),
+                new List<object>(),
                 validationContextItems
             ));
         }
@@ -124,23 +126,66 @@ namespace RecursiveDataAnnotationsValidation
             );
         }
 
+        //True when obj Equals an object on the path whose type is obj's type, a base of it, or derived
+        //from it. Related types cover a computed property that alternates between a type and its
+        //subclass. Unrelated types are not compared, so an Equals that casts without a type check
+        //does not throw.
+        private static bool EqualsAnAncestor(object obj, Type type, List<object> equalityPath)
+        {
+            foreach (var ancestor in equalityPath)
+            {
+                var ancestorType = ancestor.GetType();
+                if ((ancestorType.IsAssignableFrom(type) || type.IsAssignableFrom(ancestorType))
+                    && obj.Equals(ancestor))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        //validatedObjects holds every object visited so far, compared by reference.
+        //equalityPath holds the objects on the path from the root to this object whose type overrides Equals.
         private bool TryValidateObjectRecursive(
-            object obj, 
-            ICollection<ValidationResult> validationResults, 
-            ISet<object> validatedObjects, 
+            object obj,
+            ICollection<ValidationResult> validationResults,
+            ISet<object> validatedObjects,
+            List<object> equalityPath,
             IDictionary<object, object> validationContextItems = null
             )
         {
+            var type = obj.GetType();
+
+            //an object of a leaf type can never produce a result, such as a boxed int in an object[] (see IsLeafType)
+            if (type.IsLeafType())
+            {
+                return true;
+            }
+
             //short-circuit to avoid infinite loops on cyclical object graphs
             if (validatedObjects.Contains(obj))
             {
                 return true;
             }
 
+            //a computed property can return a new, equal object on each read, such as
+            //`Money Zero => new Money(0)`, so references never repeat and the walk would not end.
+            //Stop at an object that Equals an object on its own path: validate its own attributes,
+            //so a child that Equals its parent by Id is still checked, but don't walk into it.
+            var overridesEquals = type.OverridesEquals();
+            if (overridesEquals && EqualsAnAncestor(obj, type, equalityPath))
+            {
+                validatedObjects.Add(obj);
+                return TryValidateObject(obj, validationResults, validationContextItems);
+            }
+
             validatedObjects.Add(obj);
+            if (overridesEquals) equalityPath.Add(obj);
+
             var result = TryValidateObject(obj, validationResults, validationContextItems);
 
-            var properties = obj.GetType().GetProperties().Where(prop => prop.IsWalked()).ToList();
+            var properties = type.GetProperties().Where(prop => prop.IsWalked()).ToList();
 
             foreach (var property in properties)
             {
@@ -170,6 +215,7 @@ namespace RecursiveDataAnnotationsValidation
                                 item, 
                                 nestedResults, 
                                 validatedObjects, 
+                                equalityPath,
                                 validationContextItems
                                 ))
                             {
@@ -195,6 +241,7 @@ namespace RecursiveDataAnnotationsValidation
                             value, 
                             nestedResults, 
                             validatedObjects, 
+                            equalityPath,
                             validationContextItems
                             ))
                         {
@@ -212,6 +259,8 @@ namespace RecursiveDataAnnotationsValidation
                         break;
                 }
             }
+
+            if (overridesEquals) equalityPath.RemoveAt(equalityPath.Count - 1);
 
             return result;
         }

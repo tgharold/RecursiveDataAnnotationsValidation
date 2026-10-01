@@ -106,29 +106,55 @@ namespace RecursiveDataAnnotationsValidation.Tests
         }
 
         /// <summary>
-        /// Cycle detection uses HashSet&lt;object&gt; with the default comparer, which calls
-        /// Equals and GetHashCode. Two different objects that compare as equal count as
-        /// "already validated", so the second one is never checked.
-        /// Records (value equality) and classes with a custom Equals both trigger this.
+        /// The validator remembers each object it visits, to stop on cycles. It used a
+        /// HashSet&lt;object&gt; with the default comparer, which calls the model's Equals and
+        /// GetHashCode. Two different objects that compared equal counted as "already validated",
+        /// so the second one was never checked. Records (value equality) and classes with a
+        /// custom Equals both triggered this.
         /// Problem: with an Equals keyed on an Id, a valid item followed by an invalid item with
-        /// the same Id returns valid=true with no errors. The invalid item bypasses validation.
-        /// Records cannot bypass validation this way, because equal records have the same values
-        /// and so the same validity. They only lose the error paths for the duplicates.
-        /// A custom GetHashCode also runs on untrusted objects.
-        /// Proposed fix: add a small internal reference-equality comparer (netstandard2.0 has no
-        /// ReferenceEqualityComparer). It uses ReferenceEquals and RuntimeHelpers.GetHashCode.
-        /// Pass it to both `new HashSet&lt;object&gt;()` calls in RecursiveDataAnnotationValidator.
-        /// Order: land this with or after the primitive-collection skip (see PrimitiveCollections).
-        /// Today, boxed primitives in a collection are de-duplicated by value, so a byte[] of
-        /// zeros validates one item. With reference equality, every boxed item is validated and
-        /// kept in the set. For 1M items that is about 10 times slower.
-        /// Risk: a computed property that returns a new, equal instance on each read, such as
-        /// `Point Origin => new Point(0, 0)` on a record, stops today only because of value
-        /// equality. With reference equality it recurses until the stack overflows. This needs
-        /// a decision together with the max-depth item.
+        /// the same Id returned valid=true with no errors. The invalid item bypassed validation.
+        /// Equal records have the same values, so they lost only the duplicate error paths.
+        /// Fix: the set compares by reference (ObjectReferenceComparer, built on ReferenceEquals
+        /// and RuntimeHelpers.GetHashCode), so the model's Equals and GetHashCode no longer run.
+        /// See: https://learn.microsoft.com/dotnet/api/system.runtime.compilerservices.runtimehelpers.gethashcode
+        ///
+        /// Computed properties need one more check. A property can return a new, equal object on
+        /// each read, such as `Point Origin => new Point(0, 0)` on a record or
+        /// `Money Zero => new Money(0)` on a value object. Each read is a new reference, so a
+        /// reference check alone never stops, and the walk overflows the stack. v2.2.0 stopped
+        /// these only because of value equality.
+        /// So the validator keeps a second list: the objects on the path from the root to the
+        /// current object whose type overrides Equals. When an object's type overrides Equals,
+        /// and the object Equals an object of a related type on that list, the validator:
+        /// - Validates that object's own attributes and IValidatableObject. A child that Equals
+        ///   its parent by Id is still checked, so the bypass does not come back.
+        /// - Does not walk into that object's properties. This is what ends the chain.
+        /// A related type is the object's own type, a base of it, or a type derived from it. A
+        /// computed property that alternates between a type and its subclass would never meet
+        /// one of its own type, so the same type alone is not enough. Unrelated types are not
+        /// compared, so an Equals that casts without a type check does not throw (see
+        /// Equals_that_casts_is_not_called_with_an_unrelated_ancestor). No getter is read twice.
+        /// Structs count as overriding Equals: ValueType.Equals compares their fields, and each
+        /// read of a struct through an object or interface property boxes a new copy.
+        /// See: https://learn.microsoft.com/dotnet/api/system.valuetype.equals
+        ///
+        /// Leaf items: with reference equality, a boxed item is never "already validated", because
+        /// boxing makes a new object each time. A List&lt;object&gt; of a million zeros validated one
+        /// item before and would validate a million after. So the validator now skips any object
+        /// whose runtime type is a leaf type (see PrimitiveCollections) before the set lookup.
+        ///
         /// Behavior change: results for graphs with equal-but-distinct objects now include the
         /// previously dropped errors. Models that passed because of the bypass now fail.
-        /// That is a bug fix, but it needs a changelog entry.
+        /// Known gaps, all unchanged from v2.2.0:
+        /// - An invalid object below an object that Equals one of its ancestors is not reached,
+        ///   because the walk stops at that object (see Invalid_object_below_a_copy_of_its_ancestor_is_validated).
+        /// - Two records that reference each other overflow the stack when the record's
+        ///   generated Equals reaches the reference before it finds a difference. Equals then
+        ///   follows the cycle forever. On v2.2.0, any two records that referenced each other
+        ///   overflowed (see Records_that_reference_each_other_are_validated). On .NET Framework
+        ///   they still always overflow, inside the framework's Validator (see that test).
+        /// - A property that returns a new object on each read, on a type that does not override
+        ///   Equals, such as `Vector Zero => new Vector()`, overflows the stack.
         /// </summary>
         public class ReferenceEquality
         {
@@ -157,7 +183,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 public List<AlwaysEqualChild> Children { get; set; }
             }
 
-            [Fact(Skip = "Not fixed yet. Needs the reference-equality comparer, which must land with or after the primitive-collection skip.")]
+            [Fact]
             public void Equal_but_distinct_records_are_each_validated()
             {
                 // Records with equal values are Equals() to each other but are separate instances.
@@ -177,7 +203,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.Contains("Children[1].Name", members);
             }
 
-            [Fact(Skip = "Not fixed yet. Needs the reference-equality comparer, which must land with or after the primitive-collection skip.")]
+            [Fact]
             public void Objects_with_custom_Equals_are_each_validated()
             {
                 var model = new CustomEqualsListModel
@@ -213,6 +239,401 @@ namespace RecursiveDataAnnotationsValidation.Tests
             {
                 public Child First { get; set; }
                 public Child Second { get; set; }
+            }
+
+            /// <summary>
+            /// An older Equals pattern that casts without a type check, so it throws
+            /// InvalidCastException for an object of another type. The Equals guidelines say
+            /// Equals must not throw, but this pattern is common, and v2.2.0 validated these models.
+            /// See: https://learn.microsoft.com/dotnet/fundamentals/runtime-libraries/system-object-equals
+            /// </summary>
+            public class Customer
+            {
+                public int Id { get; set; }
+
+                public List<Order> Orders { get; set; }
+
+                public override bool Equals(object obj) => ((Customer)obj).Id == Id;
+                public override int GetHashCode() => Id;
+            }
+
+            public class Order
+            {
+                public int Id { get; set; }
+
+                [Required]
+                public string Sku { get; set; }
+
+                public override bool Equals(object obj) => ((Order)obj).Id == Id;
+                public override int GetHashCode() => Id;
+            }
+
+            // Guard. An Order is never compared with its Customer, because the two types are
+            // unrelated, so the cast in Order.Equals never sees a Customer.
+            [Fact]
+            public void Equals_that_casts_is_not_called_with_an_unrelated_ancestor()
+            {
+                var model = new Customer { Id = 1, Orders = new List<Order> { new Order { Id = 2 } } };
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Orders[0].Sku"));
+            }
+
+            /// <summary>
+            /// Equality by Id, a common pattern for entity base classes.
+            /// </summary>
+            public class Entity
+            {
+                public int Id { get; set; }
+
+                [Required]
+                public string Name { get; set; }
+
+                public override bool Equals(object obj) => obj is Entity other && other.GetType() == GetType() && other.Id == Id;
+                public override int GetHashCode() => Id;
+            }
+
+            public class EntityListModel
+            {
+                public List<Entity> Items { get; set; }
+            }
+
+            public class Folder : Entity
+            {
+                public Folder Sub { get; set; }
+
+                public List<Folder> Subs { get; set; }
+            }
+
+            // The bypass. The second item Equals the first, so on v2.2.0 it counted as already
+            // validated, and the result was valid=true with no errors.
+            [Fact]
+            public void Item_with_the_same_Id_as_a_valid_item_is_validated()
+            {
+                var model = new EntityListModel
+                {
+                    Items = new List<Entity> { new Entity { Id = 1, Name = "valid" }, new Entity { Id = 1 } }
+                };
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Items[1].Name"));
+            }
+
+            // The same bypass along a path: a child that Equals its own parent. The walk stops at
+            // the child (see the class summary), but the child's own attributes are validated.
+            [Fact]
+            public void Descendant_with_the_same_Id_as_its_ancestor_is_validated()
+            {
+                var model = new Folder { Id = 1, Name = "root", Sub = new Folder { Id = 1 } };
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Sub.Name"));
+            }
+
+            // The same, with the child in a list.
+            [Fact]
+            public void Item_with_the_same_Id_as_its_ancestor_is_validated()
+            {
+                var model = new Folder { Id = 1, Name = "root", Subs = new List<Folder> { new Folder { Id = 1 } } };
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Subs[0].Name"));
+            }
+
+            /// <summary>
+            /// A common domain-model pattern: the children are stored in a private list, and the
+            /// public property wraps it in a new read-only view on each read.
+            /// See: https://learn.microsoft.com/dotnet/api/system.collections.generic.list-1.asreadonly
+            /// </summary>
+            public class Category : Entity
+            {
+                private readonly List<Category> _children = new List<Category>();
+
+                public IReadOnlyCollection<Category> Children => _children.AsReadOnly();
+
+                public void Add(Category child) => _children.Add(child);
+            }
+
+            // The same bypass, with the child behind a read-only wrapper. Each read of Children
+            // returns a new wrapper, so a rule that asks whether the property is computed would
+            // skip this child, even though it is stored.
+            [Fact]
+            public void Item_in_a_read_only_wrapper_with_the_same_Id_as_its_ancestor_is_validated()
+            {
+                var model = new Category { Id = 1, Name = "root" };
+                model.Add(new Category { Id = 1 });
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Children[0].Name"));
+            }
+
+            /// <summary>
+            /// A record that replaces the generated equality with equality by Id. A record may
+            /// declare its own Equals(T) and GetHashCode, and the compiler then uses them.
+            /// See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/record#value-equality
+            /// </summary>
+            public record FolderRecord
+            {
+                public int Id { get; init; }
+
+                [Required]
+                public string Name { get; init; }
+
+                public FolderRecord Sub { get; init; }
+
+                public virtual bool Equals(FolderRecord other) => other != null && other.Id == Id;
+                public override int GetHashCode() => Id;
+            }
+
+            // The same bypass with a record. A record is treated like any other type that
+            // overrides Equals.
+            [Fact]
+            public void Record_descendant_with_the_same_Id_as_its_ancestor_is_validated()
+            {
+                var model = new FolderRecord { Id = 1, Name = "root", Sub = new FolderRecord { Id = 1 } };
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Sub.Name"));
+            }
+
+            // Known gap, the same as on v2.2.0. The middle folder Equals the root, so the
+            // validator checks the middle folder's own attributes but does not walk into it.
+            // The invalid folder below it is never reached.
+            [Fact(Skip = "Known gap. The walk stops at an object that Equals one of its ancestors.")]
+            public void Invalid_object_below_a_copy_of_its_ancestor_is_validated()
+            {
+                var model = new Folder
+                {
+                    Id = 1,
+                    Name = "root",
+                    Sub = new Folder { Id = 1, Name = "copy", Sub = new Folder { Id = 2 } }
+                };
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Sub.Sub.Name"));
+            }
+
+            /// <summary>
+            /// A value object: a class with value equality and computed properties that return a
+            /// new, equal Money on each read. The static and sequence forms are walked too.
+            /// </summary>
+            public sealed class Money
+            {
+                public Money(decimal amount) => Amount = amount;
+
+                public decimal Amount { get; }
+
+                public Money Zero => new Money(0);
+
+                public static Money None => new Money(0);
+
+                public IEnumerable<Money> Zeros => new[] { new Money(0) };
+
+                public override bool Equals(object obj) => obj is Money other && other.Amount == Amount;
+                public override int GetHashCode() => Amount.GetHashCode();
+            }
+
+            public class PriceModel
+            {
+                public Money Price { get; set; } = new Money(5);
+            }
+
+            // Guard. On v2.2.0, value equality stopped each chain at the second Money(0). If this
+            // breaks, the stack overflows and kills the test host (see the Origin guards).
+            [Fact]
+            public void Value_object_property_that_returns_a_new_equal_object_terminates()
+            {
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(new PriceModel(), results);
+
+                Assert.True(valid);
+                Assert.Empty(results);
+            }
+
+            /// <summary>
+            /// The same value object, but Zeros is stored. It holds a LINQ query, and LINQ runs
+            /// a query again each time it is enumerated (deferred execution). So the property
+            /// returns the same sequence object on each read, but each enumeration of it yields a
+            /// new, equal LazyMoney.
+            /// See: https://learn.microsoft.com/dotnet/standard/linq/deferred-execution-lazy-evaluation
+            /// </summary>
+            public sealed class LazyMoney
+            {
+                public LazyMoney(decimal amount)
+                {
+                    Amount = amount;
+                    Zeros = Enumerable.Range(0, 1).Select(_ => new LazyMoney(0));
+                }
+
+                public decimal Amount { get; }
+
+                public IEnumerable<LazyMoney> Zeros { get; }
+
+                public override bool Equals(object obj) => obj is LazyMoney other && other.Amount == Amount;
+                public override int GetHashCode() => Amount.GetHashCode();
+            }
+
+            public class LazyPriceModel
+            {
+                public LazyMoney Price { get; set; } = new LazyMoney(5);
+            }
+
+            // Guard. On v2.2.0, value equality stopped the chain at the second LazyMoney(0). A
+            // rule that asks whether the property is computed misses this one, because the
+            // property is stored, and the walk overflows the stack.
+            [Fact]
+            public void Stored_sequence_that_yields_new_equal_objects_terminates()
+            {
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(new LazyPriceModel(), results);
+
+                Assert.True(valid);
+                Assert.Empty(results);
+            }
+
+            public interface IShape
+            {
+                IShape Unit { get; }
+            }
+
+            // A struct gets value equality from ValueType.Equals, which compares its fields.
+            // Read through an interface, each Unit is boxed into a new object.
+            // See: https://learn.microsoft.com/dotnet/api/system.valuetype.equals
+            public struct Square : IShape
+            {
+                public int Size { get; set; }
+
+                public IShape Unit => new Square { Size = 1 };
+            }
+
+            public class ShapeHolder
+            {
+                public IShape Shape { get; set; } = new Square { Size = 3 };
+            }
+
+            // Guard. The same for a boxed struct.
+            [Fact]
+            public void Boxed_struct_property_that_returns_a_new_equal_value_terminates()
+            {
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(new ShapeHolder(), results);
+
+                Assert.True(valid);
+                Assert.Empty(results);
+            }
+
+            // Each read of Origin returns a new record that is equal to the last one.
+            public record OriginPoint(int X, int Y)
+            {
+                public OriginPoint Origin => new OriginPoint(0, 0);
+            }
+
+            // The same pattern as a static property. Type.GetProperties() returns public static
+            // properties as well as instance properties, so the validator walks this one too.
+            // See: https://learn.microsoft.com/dotnet/api/system.type.getproperties
+            public record StaticOriginPoint(int X, int Y)
+            {
+                public static StaticOriginPoint Origin => new StaticOriginPoint(0, 0);
+            }
+
+            public class ShapeModel
+            {
+                public OriginPoint Center { get; set; }
+                public StaticOriginPoint Corner { get; set; }
+            }
+
+            // Guard. On v2.2.0, value equality stops the walk at the second Origin, because it
+            // Equals the first. A reference-equality set alone would never stop: each read is a
+            // new instance, so the walk recurses until the stack overflows. A stack overflow
+            // cannot be caught and kills the test host, so if this guard breaks, the whole test
+            // run crashes instead of reporting one failure.
+            // See: https://learn.microsoft.com/dotnet/api/system.stackoverflowexception
+            [Fact]
+            public void Record_property_that_returns_a_new_equal_record_terminates()
+            {
+                var model = new ShapeModel { Center = new OriginPoint(1, 2) };
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.True(valid);
+                Assert.Empty(results);
+            }
+
+            // Guard. The same for a static property.
+            [Fact]
+            public void Static_record_property_that_returns_a_new_equal_record_terminates()
+            {
+                var model = new ShapeModel { Corner = new StaticOriginPoint(1, 2) };
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.True(valid);
+                Assert.Empty(results);
+            }
+
+            public record LinkedRecord
+            {
+                [Required]
+                public string Name { get; set; }
+
+                public LinkedRecord Next { get; set; }
+            }
+
+            // On v2.2.0 this overflowed the stack. HashSet called the record's generated
+            // GetHashCode, which hashes Next, whose GetHashCode hashes Next again, forever.
+            // The reference comparer never calls GetHashCode on the model. This test is not in
+            // the spec commit because the overflow would kill the test host there.
+            // Field order matters. The generated Equals compares fields in declaration order and
+            // stops at the first difference. Name is declared first and differs, so Equals stops
+            // before it reaches Next. With Next declared first, or with equal names, Equals
+            // follows the cycle forever and the stack overflows. That is a known gap.
+            // See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/record#value-equality
+            // Skipped on .NET Framework. There, the framework's Validator calls
+            // TypeDescriptor.GetProperties(instance), and TypeDescriptor looks the instance up in a
+            // hashtable that calls the model's GetHashCode. The overflow happens inside Validator,
+            // so the recursive validator cannot prevent it. .NET 8 and later do not call it.
+            // NETFRAMEWORK is a preprocessor symbol the SDK defines for .NET Framework targets.
+            // See: https://github.com/microsoft/referencesource/blob/master/System.ComponentModel.DataAnnotations/DataAnnotations/Validator.cs
+            // See: https://learn.microsoft.com/dotnet/standard/frameworks#preprocessor-symbols
+#if NETFRAMEWORK
+            [Fact(Skip = "On .NET Framework, Validator calls the record's GetHashCode, which follows the cycle.")]
+#else
+            [Fact]
+#endif
+            public void Records_that_reference_each_other_are_validated()
+            {
+                var first = new LinkedRecord { Name = "first" };
+                var second = new LinkedRecord { Next = first };
+                first.Next = second;
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(first, results);
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Next.Name"));
             }
         }
 
@@ -790,6 +1211,83 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
                 Assert.True(valid);
                 Assert.Empty(results);
+            }
+
+            /// <summary>
+            /// Counts the objects the validator validates. The validator creates one
+            /// ValidationContext per object, and the ValidationContext constructor copies the items
+            /// dictionary it is given, so each copy is one validated object.
+            /// The copy enumerates the dictionary through IEnumerable&lt;KeyValuePair&gt;. Dictionary's own
+            /// GetEnumerator is not virtual, so this class re-implements that interface method to
+            /// count the copies. The dictionary holds one entry so the copy has something to read.
+            /// See: https://learn.microsoft.com/dotnet/api/system.componentmodel.dataannotations.validationcontext.-ctor
+            /// See: https://learn.microsoft.com/dotnet/csharp/language-reference/language-specification/interfaces#1967-interface-re-implementation
+            /// </summary>
+            public class CountingItems : Dictionary<object, object>, IEnumerable<KeyValuePair<object, object>>
+            {
+                public CountingItems() => Add("key", "value");
+
+                public int CopyCount { get; private set; }
+
+                IEnumerator<KeyValuePair<object, object>> IEnumerable<KeyValuePair<object, object>>.GetEnumerator()
+                {
+                    CopyCount++;
+                    return GetEnumerator();
+                }
+            }
+
+            public class ObjectListHolder
+            {
+                public List<object> Items { get; set; }
+            }
+
+            private static (bool Valid, List<ValidationResult> Results, int ValidatedCount) ValidateObjects(params object[] items)
+            {
+                var model = new ObjectListHolder { Items = items.ToList() };
+                var counter = new CountingItems();
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results, counter);
+                return (valid, results, counter.CopyCount);
+            }
+
+            // A collection declared with object items must be enumerated, because only each
+            // item's runtime type shows whether it has anything to validate. An item whose runtime
+            // type is a leaf type is skipped without being validated, so only the holder counts.
+            // On master, each item was validated: a count of 7 here.
+            [Fact]
+            public void Leaf_items_in_an_object_collection_are_not_validated()
+            {
+                var (valid, results, validatedCount) = ValidateObjects(0, 1, "a", Guid.NewGuid(), Color.Red, new PlainPoint());
+
+                Assert.True(valid);
+                Assert.Empty(results);
+                Assert.Equal(1, validatedCount);
+            }
+
+            // Guard. An item of a type with attributes is still validated: the holder plus the Child.
+            [Fact]
+            public void Objects_in_an_object_collection_are_still_validated()
+            {
+                var (valid, results, validatedCount) = ValidateObjects(new Child());
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Items[0].Name"));
+                Assert.Equal(2, validatedCount);
+            }
+
+            // Guard. The runtime-type check uses the same rules as the declared-type check, so a
+            // boxed enum with a type-level attribute and a boxed IValidatableObject struct are
+            // still validated.
+            [Fact]
+            public void Items_with_something_to_validate_in_an_object_collection_are_still_validated()
+            {
+                var enums = ValidateObjects(CheckedColor.Red, (CheckedColor)99);
+                Assert.False(enums.Valid);
+                Assert.Single(enums.Results);
+
+                var structs = ValidateObjects(new SelfValidatingPoint { X = 11 });
+                Assert.False(structs.Valid);
+                Assert.Contains(structs.Results, r => r.MemberNames.Contains("Items[0].X"));
             }
         }
     }
