@@ -97,16 +97,22 @@ jobs:
       # actions/upload-release-asset actions are archived and no longer maintained.
       # The release stays a draft until the last step, because a published release is
       # immutable and cannot receive assets. A failed run leaves a draft that can be deleted.
+      # Only tags with a suffix, such as v1.5.0-alpha.1, are prereleases. GitHub never marks
+      # a prerelease as Latest, so stable tags must not be prereleases.
       - name: Create Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: >
-          gh release create "$RELEASE_TAG"
-          --verify-tag
-          --draft
-          --prerelease
-          --title "Release $RELEASE_TAG"
-          --notes ""
+        run: |
+          args=()
+          if [[ "$RELEASE_VERSION" == *-* ]]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$RELEASE_TAG" \
+            --verify-tag \
+            --draft \
+            --generate-notes \
+            --title "Release $RELEASE_TAG" \
+            "${args[@]}"
 
       - name: Create release directory
         run: mkdir -p release
