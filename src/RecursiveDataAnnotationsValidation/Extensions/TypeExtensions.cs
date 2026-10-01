@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
+using System.Reflection;
+using RecursiveDataAnnotationsValidation.Attributes;
 
 namespace RecursiveDataAnnotationsValidation.Extensions
 {
@@ -57,6 +59,19 @@ namespace RecursiveDataAnnotationsValidation.Extensions
                 || type == typeof(Guid);
 
             return isLeafKind && !HasValidationAttributes(type);
+        }
+
+        /// <summary>
+        /// True for a property the validator walks into: readable, not an indexer, not marked
+        /// [SkipRecursiveValidation], and of a reference type other than string.
+        /// </summary>
+        public static bool IsWalked(this PropertyInfo property)
+        {
+            return property.CanRead
+                && !property.GetCustomAttributes(typeof(SkipRecursiveValidationAttribute), false).Any()
+                && property.GetIndexParameters().Length == 0
+                && property.PropertyType != typeof(string)
+                && !property.PropertyType.IsValueType;
         }
 
         private static Type[] FindElementTypes(Type collectionType)

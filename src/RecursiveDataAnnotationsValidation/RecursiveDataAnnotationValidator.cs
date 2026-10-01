@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
-using RecursiveDataAnnotationsValidation.Attributes;
 using RecursiveDataAnnotationsValidation.Extensions;
 
 namespace RecursiveDataAnnotationsValidation
@@ -141,14 +140,10 @@ namespace RecursiveDataAnnotationsValidation
             validatedObjects.Add(obj);
             var result = TryValidateObject(obj, validationResults, validationContextItems);
 
-            var properties = obj.GetType().GetProperties().Where(prop => prop.CanRead
-                && !prop.GetCustomAttributes(typeof(SkipRecursiveValidationAttribute), false).Any()
-                && prop.GetIndexParameters().Length == 0).ToList();
+            var properties = obj.GetType().GetProperties().Where(prop => prop.IsWalked()).ToList();
 
             foreach (var property in properties)
             {
-                if (property.PropertyType == typeof(string) || property.PropertyType.IsValueType) continue;
-
                 var value = property.GetValue(obj, null);
 
                 List<ValidationResult> nestedResults;
