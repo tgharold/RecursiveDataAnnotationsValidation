@@ -118,12 +118,23 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// and RuntimeHelpers.GetHashCode), so the model's Equals and GetHashCode no longer run.
         /// See: https://learn.microsoft.com/dotnet/api/system.runtime.compilerservices.runtimehelpers.gethashcode
         ///
-        /// Records need one more check. A record property can return a new, equal record on each
-        /// read, such as `Point Origin => new Point(0, 0)`. Each read is a new reference, so a
-        /// reference check alone never stops, and the walk overflows the stack. So a record is
-        /// also skipped when it Equals a record of the same type on its own path from the root.
-        /// The check is limited to records: a class Equals keyed on an Id would skip a child that
-        /// has its parent's Id, which is the bypass again.
+        /// Computed properties need one more check. A property can return a new, equal object on
+        /// each read, such as `Point Origin => new Point(0, 0)` on a record or
+        /// `Money Zero => new Money(0)` on a value object. Each read is a new reference, so a
+        /// reference check alone never stops, and the walk overflows the stack. Master stopped
+        /// these only because of value equality.
+        /// So when an object's type overrides Equals, and the object Equals an object of the same
+        /// type on its own path from the root, the validator reads the property it came from a
+        /// second time:
+        /// - A different object back means the property is computed. The walk stops there, as
+        ///   it did on master.
+        /// - The same object back means it is stored data, such as a child entity that has its
+        ///   parent's Id. The walk goes on, so that child is validated. Stopping there would be
+        ///   the bypass again.
+        /// For a collection item, the second read is of the collection property.
+        /// Structs count as overriding Equals: ValueType.Equals compares their fields, and each
+        /// read of a struct through an object or interface property boxes a new copy.
+        /// See: https://learn.microsoft.com/dotnet/api/system.valuetype.equals
         ///
         /// Leaf items: with reference equality, a boxed item is never "already validated", because
         /// boxing makes a new object each time. A List&lt;object&gt; of a million zeros validated one
@@ -132,13 +143,16 @@ namespace RecursiveDataAnnotationsValidation.Tests
         ///
         /// Behavior change: results for graphs with equal-but-distinct objects now include the
         /// previously dropped errors. Models that passed because of the bypass now fail.
-        /// Known gaps:
-        /// - Two records that reference each other, and whose other values are also equal, still
+        /// Known gaps, all unchanged from master:
+        /// - Two records that reference each other, and whose other values are also equal,
         ///   overflow the stack: the record's own generated Equals follows the cycle forever.
         ///   On master, any two records that referenced each other overflowed.
-        /// - A record with a hand-written Equals keyed on an Id can still hide a descendant.
-        /// - A class property that returns a new object on each read, such as
-        ///   `Vector Zero => new Vector()`, overflows the stack, as it did on master.
+        /// - A property that returns a new object on each read, on a type that does not override
+        ///   Equals, such as `Vector Zero => new Vector()`, overflows the stack.
+        /// - A property that returns a copy of stored data counts as computed, so a copy that
+        ///   Equals an ancestor is not walked.
+        /// The second read runs a getter twice. That happens only when an object Equals an
+        /// object of the same type on its own path.
         /// </summary>
         public class ReferenceEquality
         {
@@ -268,8 +282,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.Contains(results, r => r.MemberNames.Contains("Items[1].Name"));
             }
 
-            // The same bypass along a path: a child that Equals its own parent. The extra check
-            // for records (see the class summary) must not apply to classes, or this passes.
+            // The same bypass along a path: a child that Equals its own parent. Sub is stored, so
+            // the check for computed properties (see the class summary) must not stop here.
             [Fact]
             public void Descendant_with_the_same_Id_as_its_ancestor_is_validated()
             {
@@ -313,7 +327,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 public override int GetHashCode() => Id;
             }
 
-            // The same bypass with a record. Being a record must not be what decides the skip.
+            // The same bypass with a record. Whether the property is computed decides the skip,
+            // not whether the type is a record.
             [Fact]
             public void Record_descendant_with_the_same_Id_as_its_ancestor_is_validated()
             {

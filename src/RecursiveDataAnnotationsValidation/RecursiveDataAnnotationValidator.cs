@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using RecursiveDataAnnotationsValidation.Extensions;
 
@@ -52,6 +53,7 @@ namespace RecursiveDataAnnotationsValidation
                 validationResults,
                 new HashSet<object>(ObjectReferenceComparer.Instance),
                 new List<object>(),
+                default(Source),
                 validationContextItems
                 );
         }
@@ -97,6 +99,7 @@ namespace RecursiveDataAnnotationsValidation
                 validationResults,
                 new HashSet<object>(ObjectReferenceComparer.Instance),
                 new List<object>(),
+                default(Source),
                 validationContextItems
             ));
         }
@@ -126,13 +129,41 @@ namespace RecursiveDataAnnotationsValidation
             );
         }
 
+        /// <summary>
+        /// Where a value came from: the property that was read, the object it was read from,
+        /// and the value that read returned. For a collection item, the value is the collection.
+        /// </summary>
+        private struct Source
+        {
+            private readonly object _owner;
+            private readonly PropertyInfo _property;
+            private readonly object _value;
+
+            public Source(object owner, PropertyInfo property, object value)
+            {
+                _owner = owner;
+                _property = property;
+                _value = value;
+            }
+
+            /// <summary>
+            /// True when a second read of the property returns a different object, so the
+            /// property builds a new one on each read. False for the root object.
+            /// </summary>
+            public bool IsComputed()
+            {
+                return _property != null && !ReferenceEquals(_property.GetValue(_owner, null), _value);
+            }
+        }
+
         //validatedObjects holds every object visited so far, compared by reference.
-        //recordPath holds the records on the path from the root to this object.
+        //equalityPath holds the objects on the path from the root to this object whose type overrides Equals.
         private bool TryValidateObjectRecursive(
-            object obj, 
-            ICollection<ValidationResult> validationResults, 
-            ISet<object> validatedObjects, 
-            List<object> recordPath,
+            object obj,
+            ICollection<ValidationResult> validationResults,
+            ISet<object> validatedObjects,
+            List<object> equalityPath,
+            Source source,
             IDictionary<object, object> validationContextItems = null
             )
         {
@@ -150,18 +181,21 @@ namespace RecursiveDataAnnotationsValidation
                 return true;
             }
 
-            //a record property can return a new, equal record on each read, such as
-            //`Point Origin => new Point(0, 0)`, so references alone never repeat. Stop at a record
-            //that Equals one of its own ancestors. Classes are left out: a class Equals keyed on
-            //an Id would skip a child that has its parent's Id.
-            var isRecord = type.IsRecord();
-            if (isRecord && recordPath.Any(ancestor => ancestor.GetType() == type && obj.Equals(ancestor)))
+            //a computed property can return a new, equal object on each read, such as
+            //`Money Zero => new Money(0)`, so references never repeat and the walk would not end.
+            //Stop at an object that Equals an object of the same type on its own path, but only
+            //when the property it came from is computed. Stored data is still walked, so a child
+            //that Equals its parent by Id is still validated.
+            var overridesEquals = type.OverridesEquals();
+            if (overridesEquals
+                && equalityPath.Any(ancestor => ancestor.GetType() == type && obj.Equals(ancestor))
+                && source.IsComputed())
             {
                 return true;
             }
 
             validatedObjects.Add(obj);
-            if (isRecord) recordPath.Add(obj);
+            if (overridesEquals) equalityPath.Add(obj);
 
             var result = TryValidateObject(obj, validationResults, validationContextItems);
 
@@ -195,7 +229,8 @@ namespace RecursiveDataAnnotationsValidation
                                 item, 
                                 nestedResults, 
                                 validatedObjects, 
-                                recordPath,
+                                equalityPath,
+                                new Source(obj, property, value),
                                 validationContextItems
                                 ))
                             {
@@ -221,7 +256,8 @@ namespace RecursiveDataAnnotationsValidation
                             value, 
                             nestedResults, 
                             validatedObjects, 
-                            recordPath,
+                            equalityPath,
+                            new Source(obj, property, value),
                             validationContextItems
                             ))
                         {
@@ -240,7 +276,7 @@ namespace RecursiveDataAnnotationsValidation
                 }
             }
 
-            if (isRecord) recordPath.RemoveAt(recordPath.Count - 1);
+            if (overridesEquals) equalityPath.RemoveAt(equalityPath.Count - 1);
 
             return result;
         }

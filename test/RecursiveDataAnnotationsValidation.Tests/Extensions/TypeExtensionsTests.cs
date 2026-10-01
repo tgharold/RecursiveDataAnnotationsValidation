@@ -136,25 +136,36 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
 
         public record DerivedRecord : BaseRecord;
 
-        public sealed record SealedRecord;
+        public class KeyedById
+        {
+            public int Id { get; set; }
 
-        public record struct ValueRecord(int X);
+            public override bool Equals(object obj) => obj is KeyedById other && other.Id == Id;
+            public override int GetHashCode() => Id;
+        }
 
-        // Every record class gets a compiler-generated, non-public EqualityContract property,
-        // declared again in each derived record. A record struct has none: it is a value type,
-        // which the validator never walks into.
-        // See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/record#equality-in-inheritance-hierarchies
+        // Inherits the override from KeyedById.
+        public class DerivedKeyedById : KeyedById
+        {
+        }
+
+        // A record overrides Equals in generated code. A struct inherits ValueType.Equals,
+        // which overrides object.Equals and compares the fields.
+        // See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/record#value-equality
+        // See: https://learn.microsoft.com/dotnet/api/system.valuetype.equals
         [Theory]
         [InlineData(typeof(BaseRecord), true)]
         [InlineData(typeof(DerivedRecord), true)]
-        [InlineData(typeof(SealedRecord), true)]
-        [InlineData(typeof(ValueRecord), false)]
+        [InlineData(typeof(KeyedById), true)]
+        [InlineData(typeof(DerivedKeyedById), true)]
+        [InlineData(typeof(PlainPoint), true)]
+        [InlineData(typeof(string), true)]
         [InlineData(typeof(Child), false)]
         [InlineData(typeof(SealedTag), false)]
-        [InlineData(typeof(string), false)]
-        public void Record_classes_are_detected(Type type, bool isRecord)
+        [InlineData(typeof(object), false)]
+        public void Equals_override_is_detected(Type type, bool overridesEquals)
         {
-            Assert.Equal(isRecord, type.IsRecord());
+            Assert.Equal(overridesEquals, type.OverridesEquals());
         }
     }
 }

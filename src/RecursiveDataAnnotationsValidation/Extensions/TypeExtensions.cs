@@ -20,7 +20,7 @@ namespace RecursiveDataAnnotationsValidation.Extensions
         private static readonly ConcurrentDictionary<Type, (int Version, bool IsLeaf)> LeafTypeCache =
             new ConcurrentDictionary<Type, (int Version, bool IsLeaf)>();
 
-        private static readonly ConcurrentDictionary<Type, bool> RecordCache =
+        private static readonly ConcurrentDictionary<Type, bool> OverridesEqualsCache =
             new ConcurrentDictionary<Type, bool>();
 
         private static int _typeDescriptorVersion;
@@ -80,15 +80,14 @@ namespace RecursiveDataAnnotationsValidation.Extensions
         }
 
         /// <summary>
-        /// True for a C# record class. The compiler gives every record class a non-public
-        /// EqualityContract property of type Type, declared on the record itself, and the
-        /// generated Equals compares it.
+        /// True when the type's Equals(object) is not object.Equals, so two different objects
+        /// of the type can be equal. Records, structs (through ValueType.Equals) and classes
+        /// that override Equals all count.
         /// </summary>
-        public static bool IsRecord(this Type type)
+        public static bool OverridesEquals(this Type type)
         {
-            return RecordCache.GetOrAdd(type, t =>
-                t.GetProperty("EqualityContract", BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-                    ?.PropertyType == typeof(Type));
+            return OverridesEqualsCache.GetOrAdd(type, t =>
+                t.GetMethod("Equals", new[] { typeof(object) }).DeclaringType != typeof(object));
         }
 
         private static Type[] FindElementTypes(Type collectionType)
