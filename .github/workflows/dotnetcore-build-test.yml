@@ -22,11 +22,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The test project targets net8.0 and net10.0 everywhere, plus net481
-        # (.NET Framework) on Windows, the only OS that can run it.
+        # The test project targets net8.0 and net10.0 everywhere. Windows also runs
+        # net481 (.NET Framework), because it is the only OS that can.
         os: [ ubuntu-latest, windows-latest ]
 
     runs-on: ${{ matrix.os }}
+
+    env:
+      # MSBuild reads environment variables as properties. The test project adds the
+      # net481 target only when this is true.
+      IncludeNetFramework: ${{ matrix.os == 'windows-latest' }}
 
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -38,21 +43,25 @@ jobs:
           8.0.x
           10.0.x
 
-    - name: Build with dotnet
+    # The example and benchmark projects have no tests, so one OS is enough to check that
+    # they still build.
+    - name: Build the solution
+      if: runner.os == 'Linux'
       run: dotnet build --configuration Release
 
     - name: Run unit tests
-      run: dotnet test --configuration Release --no-build
+      run: dotnet test test/RecursiveDataAnnotationsValidation.Tests --configuration Release
 
   # note: changing build/name breaks the branch protection
   # Branch protection requires a check named Build-Test. This job reports the
-  # result of every matrix job under that one name. It runs even when a matrix
-  # job fails, because a skipped required check would count as passing.
+  # result of every matrix job under that one name. It runs when a matrix job
+  # fails, because a skipped required check would count as passing, but not
+  # when the run is cancelled.
   build:
     name: Build-Test
 
     needs: test
-    if: always()
+    if: ${{ !cancelled() }}
 
     runs-on: ubuntu-latest
 
