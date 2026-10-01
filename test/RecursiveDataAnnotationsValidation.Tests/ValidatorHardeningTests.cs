@@ -157,7 +157,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 public List<AlwaysEqualChild> Children { get; set; }
             }
 
-            [Fact(Skip = "Not fixed yet. Needs the reference-equality comparer, which must land with or after the primitive-collection skip.")]
+            [Fact]
             public void Equal_but_distinct_records_are_each_validated()
             {
                 // Records with equal values are Equals() to each other but are separate instances.
@@ -177,7 +177,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.Contains("Children[1].Name", members);
             }
 
-            [Fact(Skip = "Not fixed yet. Needs the reference-equality comparer, which must land with or after the primitive-collection skip.")]
+            [Fact]
             public void Objects_with_custom_Equals_are_each_validated()
             {
                 var model = new CustomEqualsListModel
@@ -213,6 +213,112 @@ namespace RecursiveDataAnnotationsValidation.Tests
             {
                 public Child First { get; set; }
                 public Child Second { get; set; }
+            }
+
+            /// <summary>
+            /// Equality by Id, a common pattern for entity base classes.
+            /// </summary>
+            public class Entity
+            {
+                public int Id { get; set; }
+
+                [Required]
+                public string Name { get; set; }
+
+                public override bool Equals(object obj) => obj is Entity other && other.GetType() == GetType() && other.Id == Id;
+                public override int GetHashCode() => Id;
+            }
+
+            public class EntityListModel
+            {
+                public List<Entity> Items { get; set; }
+            }
+
+            public class Folder : Entity
+            {
+                public Folder Sub { get; set; }
+            }
+
+            // The bypass. The second item Equals the first, so on master it counted as already
+            // validated, and the result was valid=true with no errors.
+            [Fact]
+            public void Item_with_the_same_Id_as_a_valid_item_is_validated()
+            {
+                var model = new EntityListModel
+                {
+                    Items = new List<Entity> { new Entity { Id = 1, Name = "valid" }, new Entity { Id = 1 } }
+                };
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Items[1].Name"));
+            }
+
+            // The same bypass along a path: a child that Equals its own parent. The extra check
+            // for records (see the class summary) must not apply to classes, or this passes.
+            [Fact]
+            public void Descendant_with_the_same_Id_as_its_ancestor_is_validated()
+            {
+                var model = new Folder { Id = 1, Name = "root", Sub = new Folder { Id = 1 } };
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Sub.Name"));
+            }
+
+            // Each read of Origin returns a new record that is equal to the last one.
+            public record OriginPoint(int X, int Y)
+            {
+                public OriginPoint Origin => new OriginPoint(0, 0);
+            }
+
+            // The same pattern as a static property. Type.GetProperties() returns public static
+            // properties as well as instance properties, so the validator walks this one too.
+            // See: https://learn.microsoft.com/dotnet/api/system.type.getproperties
+            public record StaticOriginPoint(int X, int Y)
+            {
+                public static StaticOriginPoint Origin => new StaticOriginPoint(0, 0);
+            }
+
+            public class ShapeModel
+            {
+                public OriginPoint Center { get; set; }
+                public StaticOriginPoint Corner { get; set; }
+            }
+
+            // Guard. On master, value equality stops the walk at the second Origin, because it
+            // Equals the first. A reference-equality set alone would never stop: each read is a
+            // new instance, so the walk recurses until the stack overflows. A stack overflow
+            // cannot be caught and kills the test host, so if this guard breaks, the whole test
+            // run crashes instead of reporting one failure.
+            // See: https://learn.microsoft.com/dotnet/api/system.stackoverflowexception
+            [Fact]
+            public void Record_property_that_returns_a_new_equal_record_terminates()
+            {
+                var model = new ShapeModel { Center = new OriginPoint(1, 2) };
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.True(valid);
+                Assert.Empty(results);
+            }
+
+            // Guard. The same for a static property.
+            [Fact]
+            public void Static_record_property_that_returns_a_new_equal_record_terminates()
+            {
+                var model = new ShapeModel { Corner = new StaticOriginPoint(1, 2) };
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.True(valid);
+                Assert.Empty(results);
             }
         }
 
@@ -790,6 +896,83 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
                 Assert.True(valid);
                 Assert.Empty(results);
+            }
+
+            /// <summary>
+            /// Counts the objects the validator validates. The validator creates one
+            /// ValidationContext per object, and the ValidationContext constructor copies the items
+            /// dictionary it is given, so each copy is one validated object.
+            /// The copy enumerates the dictionary through IEnumerable&lt;KeyValuePair&gt;. Dictionary's own
+            /// GetEnumerator is not virtual, so this class re-implements that interface method to
+            /// count the copies. The dictionary holds one entry so the copy has something to read.
+            /// See: https://learn.microsoft.com/dotnet/api/system.componentmodel.dataannotations.validationcontext.-ctor
+            /// See: https://learn.microsoft.com/dotnet/csharp/language-reference/language-specification/interfaces#1967-interface-re-implementation
+            /// </summary>
+            public class CountingItems : Dictionary<object, object>, IEnumerable<KeyValuePair<object, object>>
+            {
+                public CountingItems() => Add("key", "value");
+
+                public int CopyCount { get; private set; }
+
+                IEnumerator<KeyValuePair<object, object>> IEnumerable<KeyValuePair<object, object>>.GetEnumerator()
+                {
+                    CopyCount++;
+                    return GetEnumerator();
+                }
+            }
+
+            public class ObjectListHolder
+            {
+                public List<object> Items { get; set; }
+            }
+
+            private static (bool Valid, List<ValidationResult> Results, int ValidatedCount) ValidateObjects(params object[] items)
+            {
+                var model = new ObjectListHolder { Items = items.ToList() };
+                var counter = new CountingItems();
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results, counter);
+                return (valid, results, counter.CopyCount);
+            }
+
+            // A collection declared with object items must be enumerated, because only each
+            // item's runtime type shows whether it has anything to validate. An item whose runtime
+            // type is a leaf type is skipped without being validated, so only the holder counts.
+            // On master, each item was validated: a count of 7 here.
+            [Fact]
+            public void Leaf_items_in_an_object_collection_are_not_validated()
+            {
+                var (valid, results, validatedCount) = ValidateObjects(0, 1, "a", Guid.NewGuid(), Color.Red, new PlainPoint());
+
+                Assert.True(valid);
+                Assert.Empty(results);
+                Assert.Equal(1, validatedCount);
+            }
+
+            // Guard. An item of a type with attributes is still validated: the holder plus the Child.
+            [Fact]
+            public void Objects_in_an_object_collection_are_still_validated()
+            {
+                var (valid, results, validatedCount) = ValidateObjects(new Child());
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Items[0].Name"));
+                Assert.Equal(2, validatedCount);
+            }
+
+            // Guard. The runtime-type check uses the same rules as the declared-type check, so a
+            // boxed enum with a type-level attribute and a boxed IValidatableObject struct are
+            // still validated.
+            [Fact]
+            public void Items_with_something_to_validate_in_an_object_collection_are_still_validated()
+            {
+                var enums = ValidateObjects(CheckedColor.Red, (CheckedColor)99);
+                Assert.False(enums.Valid);
+                Assert.Single(enums.Results);
+
+                var structs = ValidateObjects(new SelfValidatingPoint { X = 11 });
+                Assert.False(structs.Valid);
+                Assert.Contains(structs.Results, r => r.MemberNames.Contains("Items[0].X"));
             }
         }
     }
