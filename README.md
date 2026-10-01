@@ -35,6 +35,12 @@ The [`[SkipRecursiveValidation]`](https://github.com/tgharold/RecursiveDataAnnot
 - For a type that does not override `Equals`, mark such a property with `[SkipRecursiveValidation]`. Otherwise the walk overflows the stack, which ends the process.
 - Two records that reference each other can also overflow the stack. A record's generated `Equals` compares properties in declaration order, so it follows the reference forever if it reaches it before a property that differs. This happens when the records have equal values, or when the reference is declared first. On .NET Framework it always happens, because the framework's `Validator` calls the record's generated `GetHashCode`, which follows the reference too. Marking the reference with `[SkipRecursiveValidation]` avoids the walk, but not the `GetHashCode` call on .NET Framework. There, override `GetHashCode` so it does not include the reference.
 
+### Framework types that are not walked
+
+The validator neither validates nor walks into an object of these framework types, or of a type derived from one: `Type` and other `MemberInfo` types, `Assembly`, `Module`, delegates, `Uri`, and `FileSystemInfo`, which covers `DirectoryInfo` and `FileInfo`. Reading their properties throws or never ends, and they carry no validation attributes. This applies to collection items too, such as a `List<Type>`.
+
+Other framework types are walked, so your objects inside them are validated. Examples are tuples, `KeyValuePair` items of a dictionary, and collections.
+
 ## Build Status
 
 ![.NET Core](https://github.com/tgharold/RecursiveDataAnnotationsValidation/workflows/.NET%20Core/badge.svg)
