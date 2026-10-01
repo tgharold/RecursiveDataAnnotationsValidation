@@ -321,15 +321,20 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// validates each one. Items such as ints and strings have no DataAnnotations to check.
         /// Problem: wasted CPU and memory on large payloads. It is a denial-of-service
         /// vector for model-bound input.
-        /// Fix: skip a collection when every element type it can yield is a primitive, an enum,
-        /// string, decimal, DateTime, DateTimeOffset, TimeSpan or Guid, or a Nullable of one of
-        /// those. The element type comes from the array element type, or from each IEnumerable&lt;T&gt;
-        /// the collection implements. The decision is by type, so no enumeration happens.
+        /// Fix: skip a collection when every element type it declares is a primitive, an enum,
+        /// string, decimal, DateTime, DateTimeOffset, TimeSpan or Guid, a Nullable of one of
+        /// those, or a KeyValuePair of two of those. The element type comes from the array element
+        /// type, or from each IEnumerable&lt;T&gt; the collection implements. The decision is by type,
+        /// so no enumeration happens.
         /// Behavior change: items of these types are no longer passed to the validator. They carry
-        /// no attributes, so results do not change. Collections of structs or objects are not
-        /// skipped, because their items can have attributes.
-        /// Not solved here: lazy or infinite sequences of objects, and lazy queryables that hit
-        /// a database. Those need a separate decision.
+        /// no attributes, so the results do not change. A lazy sequence of these types, such as a
+        /// LINQ query or an IQueryable&lt;int&gt;, is no longer run, so an exception it throws while
+        /// enumerating no longer surfaces. Collections of structs or objects are not skipped,
+        /// because their items can have attributes.
+        /// Accepted gap: a type whose non-generic enumerator yields different items than its
+        /// IEnumerable&lt;T&gt; breaks the IEnumerable&lt;T&gt; contract. It is skipped by its declared type.
+        /// Not solved here: lazy or infinite sequences of objects, and lazy queryables of objects
+        /// that hit a database. Those need a separate decision.
         /// </summary>
         public class PrimitiveCollections
         {
@@ -390,14 +395,42 @@ namespace RecursiveDataAnnotationsValidation.Tests
             [Fact]
             public void Collections_of_other_leaf_types_are_not_enumerated()
             {
-                Assert.Equal(0, Validate(Color.Red, Color.Green).EnumerationCount);
-                Assert.Equal(0, Validate("a", "b").EnumerationCount);
-                Assert.Equal(0, Validate(1.5m).EnumerationCount);
-                Assert.Equal(0, Validate(DateTime.UtcNow).EnumerationCount);
-                Assert.Equal(0, Validate(DateTimeOffset.UtcNow).EnumerationCount);
-                Assert.Equal(0, Validate(TimeSpan.FromSeconds(1)).EnumerationCount);
-                Assert.Equal(0, Validate(Guid.NewGuid()).EnumerationCount);
-                Assert.Equal(0, Validate<int?>(1, null).EnumerationCount);
+                AssertNotEnumerated(Color.Red, Color.Green);
+                AssertNotEnumerated("a", "b");
+                AssertNotEnumerated(1.5m);
+                AssertNotEnumerated(DateTime.UtcNow);
+                AssertNotEnumerated(DateTimeOffset.UtcNow);
+                AssertNotEnumerated(TimeSpan.FromSeconds(1));
+                AssertNotEnumerated(Guid.NewGuid());
+                AssertNotEnumerated<int?>(1, null);
+                AssertNotEnumerated(new KeyValuePair<string, int>("a", 1));
+            }
+
+            private static void AssertNotEnumerated<T>(params T[] items)
+            {
+                var (valid, results, enumerationCount) = Validate(items);
+
+                Assert.True(valid);
+                Assert.Empty(results);
+                Assert.Equal(0, enumerationCount);
+            }
+
+            public class DictionaryHolder
+            {
+                public Dictionary<string, Child> Map { get; set; }
+            }
+
+            // Guard. Each dictionary item is a boxed KeyValuePair, and its Value is still walked.
+            [Fact]
+            public void Dictionary_of_objects_is_still_validated()
+            {
+                var model = new DictionaryHolder { Map = new Dictionary<string, Child> { ["a"] = new Child() } };
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Map[0].Value.Name"));
             }
 
             // Guard. Items of a reference type can carry attributes, so they are still validated.

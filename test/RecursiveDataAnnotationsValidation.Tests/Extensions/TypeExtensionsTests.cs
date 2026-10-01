@@ -29,6 +29,8 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
         [InlineData(typeof(List<DayOfWeek>))]
         [InlineData(typeof(string))]
         [InlineData(typeof(string[]))]
+        [InlineData(typeof(Dictionary<string, int>))]
+        [InlineData(typeof(Dictionary<string, string>))]
         public void Collection_of_leaf_type_is_detected(Type type)
         {
             Assert.True(type.IsCollectionOfLeafType());
@@ -39,7 +41,8 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
         [InlineData(typeof(object[]))]
         [InlineData(typeof(int[][]))]
         [InlineData(typeof(List<Child>))]
-        [InlineData(typeof(Dictionary<string, int>))]
+        [InlineData(typeof(Dictionary<string, Child>))]
+        [InlineData(typeof(Dictionary<Child, int>))]
         [InlineData(typeof(ArrayList))]
         [InlineData(typeof(MixedSequence))]
         public void Collection_that_can_yield_other_types_is_not_detected(Type type)
