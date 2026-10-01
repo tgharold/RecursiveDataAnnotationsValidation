@@ -19,5 +19,5 @@ The release workflow publishes to nuget.org with Trusted Publishing. No API key 
 
 1. Create an [annotated git tag](https://git-scm.com/book/en/v2/Git-Basics-Tagging) on the commit for the release. Such as `$ git tag -a v1.1.0 -m "Release v1.1.0"`
 2. Push the tag to the repository. The tag must be on a commit that is on `master`, and the `v*` tag ruleset allows only repository admins to create it.
-3. The release workflow starts and waits for approval of the `nuget` environment. Approve the run in GitHub Actions.
+3. The release workflow checks the tag, then runs the test matrix on Linux and Windows. This takes several minutes. If the tests pass, the workflow waits for approval of the `nuget` environment. Approve the run in GitHub Actions.
 4. After approval, the build, GitHub release, and nuget.org publish run automatically.

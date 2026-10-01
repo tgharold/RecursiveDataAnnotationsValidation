@@ -16,7 +16,44 @@ env:
   TARGET: netstandard2.0
 
 jobs:
+  # Cheap checks first, so a bad tag fails before the test matrix uses any runners.
+  # The build job repeats both checks right before it publishes.
+  verify-tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # Full history, needed to check that the tag is on master.
+
+      - name: Verify tag is on master
+        run: |
+          if ! git merge-base --is-ancestor HEAD origin/master; then
+            echo "::error::Tagged commit is not reachable from master"
+            exit 1
+          fi
+
+      - name: Verify tag format
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag '$GITHUB_REF_NAME' does not look like vMAJOR.MINOR.PATCH[-suffix]"
+            exit 1
+          fi
+
+  # The same test matrix as pull requests: net8.0 and net10.0 on Linux and Windows,
+  # and net481 on Windows. Nothing below runs, and no approval is requested, unless it passes.
+  test:
+    needs: verify-tag
+    uses: ./.github/workflows/dotnetcore-build-test.yml
+    permissions:
+      contents: read
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     # Publishing needs approval from a required reviewer and only runs for v* tags.
     environment: nuget
@@ -60,11 +97,10 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      # Only the library ships, so build and pack only the library. The test job already
+      # built and tested the rest of the solution.
       - name: dotnet build
-        run: dotnet build --configuration "$CONFIG"
-
-      - name: dotnet test
-        run: dotnet test --configuration "$CONFIG"
+        run: dotnet build "src/$PROJECT" --configuration "$CONFIG"
 
       - name: dotnet publish
         working-directory: ./src/${{ env.PROJECT }}
@@ -77,7 +113,7 @@ jobs:
 
       - name: dotnet pack
         run: >
-          dotnet pack
+          dotnet pack "src/$PROJECT"
           --configuration "$CONFIG"
           /p:Version="$RELEASE_VERSION"
           --include-symbols

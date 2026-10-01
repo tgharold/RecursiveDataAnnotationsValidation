@@ -8,27 +8,69 @@ on:
   pull_request:
     branches: [ master ]
 
+  # The release workflow runs these same tests before it publishes.
+  workflow_call:
+
 permissions:
   contents: read
 
 jobs:
 
-  # note: changing build/name breaks the branch protection
-  build:
-    name: Build-Test
+  test:
+    name: Test (${{ matrix.os }})
 
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The test project targets net8.0 and net10.0 everywhere. Windows also runs
+        # net481 (.NET Framework), because it is the only OS that can.
+        os: [ ubuntu-latest, windows-latest ]
+
+    runs-on: ${{ matrix.os }}
+
+    env:
+      # MSBuild reads environment variables as properties. The test project adds the
+      # net481 target only when this is true.
+      IncludeNetFramework: ${{ matrix.os == 'windows-latest' }}
 
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-    - name: Setup .NET 8
+    - name: Setup .NET 8 and .NET 10
       uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
       with:
-        dotnet-version: 8.0.x
+        dotnet-version: |
+          8.0.x
+          10.0.x
 
-    - name: Build with dotnet
+    # The example and benchmark projects have no tests, so one OS is enough to check that
+    # they still build.
+    - name: Build the solution
+      if: runner.os == 'Linux'
       run: dotnet build --configuration Release
 
     - name: Run unit tests
-      run: dotnet test --configuration Release
+      run: dotnet test test/RecursiveDataAnnotationsValidation.Tests --configuration Release
+
+  # note: changing build/name breaks the branch protection
+  # Branch protection requires a check named Build-Test. This job reports the
+  # result of every matrix job under that one name. It runs when a matrix job
+  # fails, because a skipped required check would count as passing, but not
+  # when the run is cancelled.
+  build:
+    name: Build-Test
+
+    needs: test
+    if: ${{ !cancelled() }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check test results
+      env:
+        TEST_RESULT: ${{ needs.test.result }}
+      run: |
+        if [ "$TEST_RESULT" != "success" ]; then
+          echo "::error::Tests did not pass: $TEST_RESULT"
+          exit 1
+        fi

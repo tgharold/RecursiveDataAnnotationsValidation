@@ -1,7 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <!-- The supported LTS runtimes. .NET Framework 4.8.1 is opt-in with -p:IncludeNetFramework=true,
+         because only Windows with the 4.8.1 runtime can run it. CI sets it on Windows. Elsewhere the
+         property still checks that the net481 build compiles. -->
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <TargetFrameworks Condition="'$(IncludeNetFramework)' == 'true'">$(TargetFrameworks);net481</TargetFrameworks>
+    <!-- One language version for every target. .NET Framework would otherwise default to C# 7.3. -->
+    <LangVersion>12.0</LangVersion>
     <IsPackable>false</IsPackable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
