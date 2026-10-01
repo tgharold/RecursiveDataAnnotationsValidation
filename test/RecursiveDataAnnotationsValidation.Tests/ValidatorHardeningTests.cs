@@ -18,8 +18,9 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// Not covered:
     /// - A max-depth limit. A deep acyclic graph causes an uncatchable StackOverflowException
     ///   that would kill the test host, so it needs a design decision first.
-    /// - Lazy or infinite sequences, and user getters that throw. The desired behavior
-    ///   (skip, report or propagate) is not decided yet.
+    /// - Lazy or infinite sequences of objects, and user getters that throw. The desired
+    ///   behavior (skip, report or propagate) is not decided yet. Lazy sequences of leaf types
+    ///   are no longer run (see PrimitiveCollections).
     /// </summary>
     public class ValidatorHardeningTests
     {
@@ -656,6 +657,34 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.False(valid);
                 Assert.Contains(results, r => r.MemberNames.Contains("Items[0].X"));
                 Assert.Equal(1, enumerationCount);
+            }
+
+            public class LazyHolder
+            {
+                public IEnumerable<int> Numbers { get; set; }
+            }
+
+            // A LINQ query uses deferred execution: Select's lambda runs only when something
+            // enumerates the query. The validator now skips a sequence of ints without
+            // enumerating it, so the lambda never runs and its exception never surfaces.
+            // On master, validation threw InvalidOperationException here.
+            // See: https://learn.microsoft.com/dotnet/standard/linq/deferred-execution-lazy-evaluation
+            [Fact]
+            public void Lazy_sequence_of_a_leaf_type_is_not_run()
+            {
+                var model = new LazyHolder
+                {
+                    Numbers = Enumerable.Range(0, 1).Select<int, int>(_ => throw new InvalidOperationException("enumerated")),
+                };
+
+                var results = new List<ValidationResult>();
+                var valid = false;
+                var ex = Record.Exception(() =>
+                    valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results));
+
+                Assert.Null(ex);
+                Assert.True(valid);
+                Assert.Empty(results);
             }
 
             [Fact]
