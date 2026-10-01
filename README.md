@@ -43,6 +43,8 @@ The [`[SkipRecursiveValidation]`](https://github.com/tgharold/RecursiveDataAnnot
 
 https://www.nuget.org/packages/RecursiveDataAnnotationsValidation/
 
-## Legacy
+## History and attribution
 
-This package grew out of a need to recursively validate POCOs used for the [.NET Core options pattern](https://docs.microsoft.com/en-us/aspnet/core/fundamentals/configuration/options?view=aspnetcore-3.1) and is based on work by [Mike Reust](https://github.com/reustmd) and his [DataAnnotationsValidatorRecursive](https://github.com/reustmd/DataAnnotationsValidatorRecursive) project.  After doing a lot of [experimentation](https://github.com/tgharold/DotNetCore-ConfigurationOptionsValidationExamples), I went ahead and forked the project in order to make minor improvements, port it to .NET Standard, and experiment with using [Github Actions](https://docs.github.com/en/actions).
+This package grew out of a need to recursively validate POCOs used for the [.NET Core options pattern](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/configuration/options). It is based on the [DataAnnotationsValidatorRecursive](https://github.com/reustmd/DataAnnotationsValidatorRecursive) project by [Mike Reust](https://github.com/reustmd). After a lot of [experimentation](https://github.com/tgharold/DotNetCore-ConfigurationOptionsValidationExamples), I forked that project. My goals at the time were to make minor improvements, port it to .NET Standard, and experiment with [GitHub Actions](https://docs.github.com/en/actions). The two projects have since evolved independently.
+
+Mike Reust's original copyright is retained in the [LICENSE](https://github.com/tgharold/RecursiveDataAnnotationsValidation/blob/master/LICENSE).
