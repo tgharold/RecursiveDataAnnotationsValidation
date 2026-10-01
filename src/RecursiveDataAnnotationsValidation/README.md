@@ -25,3 +25,10 @@ There are more examples in the [example](https://github.com/tgharold/RecursiveDa
 ### SkipRecursiveValidationAttribute
 
 The [`[SkipRecursiveValidation]`](https://github.com/tgharold/RecursiveDataAnnotationsValidation/blob/master/src/RecursiveDataAnnotationsValidation/Attributes/SkipRecursiveValidation.cs) attribute can be used on properties where you do not want to recursively validate.  An example of this can be seen in [SkippedChildrenExample.cs](https://github.com/tgharold/RecursiveDataAnnotationsValidation/blob/master/test/RecursiveDataAnnotationsValidation.Tests/TestModels/SkippedChildrenExample.cs).
+
+### Shared objects, cycles and computed properties
+
+- Each object is validated once, even when several properties point to it. This also stops cycles, such as a child that points back to its parent.
+- Objects are compared by reference. Two separate objects that are `Equals` to each other, such as records with the same values or entities with the same `Id`, are each validated.
+- Public static properties are walked, as well as instance properties.
+- A property that builds a new object on each read, such as `public Money Zero => new Money(0)`, could make the walk go on forever. When the type overrides `Equals` and the new object equals an object of the same type on its own path, the walk stops there. For a type that does not override `Equals`, mark the property with `[SkipRecursiveValidation]`. Otherwise the walk overflows the stack, which ends the process.
