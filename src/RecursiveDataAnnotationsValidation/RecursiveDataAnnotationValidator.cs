@@ -126,6 +126,25 @@ namespace RecursiveDataAnnotationsValidation
             );
         }
 
+        //True when obj Equals an object on the path whose type is obj's type, a base of it, or derived
+        //from it. Related types cover a computed property that alternates between a type and its
+        //subclass. Unrelated types are not compared, so an Equals that casts without a type check
+        //does not throw.
+        private static bool EqualsAnAncestor(object obj, Type type, List<object> equalityPath)
+        {
+            foreach (var ancestor in equalityPath)
+            {
+                var ancestorType = ancestor.GetType();
+                if ((ancestorType.IsAssignableFrom(type) || type.IsAssignableFrom(ancestorType))
+                    && obj.Equals(ancestor))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         //validatedObjects holds every object visited so far, compared by reference.
         //equalityPath holds the objects on the path from the root to this object whose type overrides Equals.
         private bool TryValidateObjectRecursive(
@@ -155,7 +174,7 @@ namespace RecursiveDataAnnotationsValidation
             //Stop at an object that Equals an object on its own path: validate its own attributes,
             //so a child that Equals its parent by Id is still checked, but don't walk into it.
             var overridesEquals = type.OverridesEquals();
-            if (overridesEquals && equalityPath.Any(ancestor => obj.Equals(ancestor)))
+            if (overridesEquals && EqualsAnAncestor(obj, type, equalityPath))
             {
                 validatedObjects.Add(obj);
                 return TryValidateObject(obj, validationResults, validationContextItems);
