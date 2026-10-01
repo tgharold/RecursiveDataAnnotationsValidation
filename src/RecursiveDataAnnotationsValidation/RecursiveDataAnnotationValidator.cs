@@ -189,6 +189,13 @@ namespace RecursiveDataAnnotationsValidation
                 return true;
             }
 
+            //reading the properties of some framework types throws or never ends, such as a relative
+            //Uri or a DirectoryInfo, and they carry no attributes (see IsUnsafeToWalk)
+            if (type.IsUnsafeToWalk())
+            {
+                return true;
+            }
+
             //short-circuit to avoid infinite loops on cyclical object graphs
             if (validatedObjects.Contains(obj))
             {

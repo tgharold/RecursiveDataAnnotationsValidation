@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using RecursiveDataAnnotationsValidation.Attributes;
@@ -22,6 +23,21 @@ namespace RecursiveDataAnnotationsValidation.Extensions
 
         private static readonly ConcurrentDictionary<Type, bool> OverridesEqualsCache =
             new ConcurrentDictionary<Type, bool>();
+
+        private static readonly ConcurrentDictionary<Type, bool> UnsafeToWalkCache =
+            new ConcurrentDictionary<Type, bool>();
+
+        // Framework types whose properties throw, or never end, when the validator walks them.
+        // They carry no validation attributes.
+        private static readonly Type[] UnsafeToWalkTypes =
+        {
+            typeof(MemberInfo),     // Type, MethodInfo: DeclaringMethod and others throw
+            typeof(Assembly),
+            typeof(Module),
+            typeof(Delegate),       // Method is a MethodInfo, and Target is a closure object
+            typeof(Uri),            // a relative Uri throws from Segments and others
+            typeof(FileSystemInfo), // DirectoryInfo.Root returns a new DirectoryInfo on each read
+        };
 
         private static int _typeDescriptorVersion;
 
@@ -88,6 +104,17 @@ namespace RecursiveDataAnnotationsValidation.Extensions
         {
             return OverridesEqualsCache.GetOrAdd(type, t =>
                 t.GetMethod("Equals", new[] { typeof(object) }).DeclaringType != typeof(object));
+        }
+
+        /// <summary>
+        /// True for a framework type that the validator neither validates nor walks into, because
+        /// reading its properties throws or never ends. Types derived from one count too. See
+        /// <see cref="UnsafeToWalkTypes"/>.
+        /// </summary>
+        public static bool IsUnsafeToWalk(this Type type)
+        {
+            return UnsafeToWalkCache.GetOrAdd(type, t =>
+                UnsafeToWalkTypes.Any(unsafeType => unsafeType.IsAssignableFrom(t)));
         }
 
         private static Type[] FindElementTypes(Type collectionType)
