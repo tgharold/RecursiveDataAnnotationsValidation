@@ -14,12 +14,13 @@ Breaking changes are marked **BREAKING**.
 - Items in a collection declared with `object` items, such as `object[]`, `List<object>` or `Dictionary<string, object>`, are skipped when their runtime type has nothing to validate, by the same rule.
 - Because these collections are no longer enumerated, their enumerators no longer run during validation. A lazy sequence such as a LINQ query or an `IQueryable<int>` is not executed, so an exception it would throw while enumerating no longer surfaces.
 - Release workflow: run the tests on .NET 8, .NET 10 and .NET Framework 4.8.1, on Linux and Windows, before publishing.
+- The validator no longer calls `GetHashCode` on your objects. It calls `Equals` only to compare an object with its ancestors of the same type, a base type or a derived type.
 - README: describe how shared objects, cycles and computed properties are handled.
 
 ### Fixed
 
 - Objects that compare equal but are separate instances are now each validated. Before, only the first was validated, so an invalid object passed when it was `Equals` to one already seen, for example an entity whose `Equals` compares only an `Id`. Models that passed only because of this may now fail.
-- An object that is `Equals` to one of its own ancestors, such as a sub-folder with its parent's `Id`, now has its own attributes validated. The validator still does not walk into it, so a property that builds a new, equal object on each read, such as `Money Zero => new Money(0)`, still stops the walk as before.
+- An object that is `Equals` to one of its own ancestors of a related type, such as a sub-folder with its parent's `Id`, now has its own attributes validated. The validator still does not walk into it, so a property that builds a new, equal object on each read, such as `Money Zero => new Money(0)`, still stops the walk as before.
 - Two records that reference each other no longer always overflow the stack. They still do when the generated `Equals` reaches the reference before a property that differs, because it compares properties in declaration order.
 
 ## 2.2.4 - 2026-10-01
