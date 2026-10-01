@@ -239,6 +239,47 @@ namespace RecursiveDataAnnotationsValidation.Tests
             }
 
             /// <summary>
+            /// An older Equals pattern that casts without a type check, so it throws
+            /// InvalidCastException for an object of another type. The Equals guidelines say
+            /// Equals must not throw, but this pattern is common, and v2.2.0 validated these models.
+            /// See: https://learn.microsoft.com/dotnet/fundamentals/runtime-libraries/system-object-equals
+            /// </summary>
+            public class Customer
+            {
+                public int Id { get; set; }
+
+                public List<Order> Orders { get; set; }
+
+                public override bool Equals(object obj) => ((Customer)obj).Id == Id;
+                public override int GetHashCode() => Id;
+            }
+
+            public class Order
+            {
+                public int Id { get; set; }
+
+                [Required]
+                public string Sku { get; set; }
+
+                public override bool Equals(object obj) => ((Order)obj).Id == Id;
+                public override int GetHashCode() => Id;
+            }
+
+            // Guard. An Order is never compared with its Customer, because the two types are
+            // unrelated, so the cast in Order.Equals never sees a Customer.
+            [Fact]
+            public void Equals_that_casts_is_not_called_with_an_unrelated_ancestor()
+            {
+                var model = new Customer { Id = 1, Orders = new List<Order> { new Order { Id = 2 } } };
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Orders[0].Sku"));
+            }
+
+            /// <summary>
             /// Equality by Id, a common pattern for entity base classes.
             /// </summary>
             public class Entity
