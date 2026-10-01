@@ -659,6 +659,101 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.Equal(1, enumerationCount);
             }
 
+            // No attribute in source. A test adds one, validates, then removes it.
+            public enum RemovedCheckedColor { Red, Green }
+
+            // Edge case. Validator caches each type's attributes the first time it validates that
+            // type, and never refreshes that cache. So after TypeDescriptor.RemoveProvider removes
+            // a runtime attribute, Validator on master keeps applying it: the second validation
+            // below still fails there. RemoveProvider raises TypeDescriptor.Refreshed, so this
+            // validator's own cache sees that the type has no attribute left. It skips the
+            // collection, and the removed attribute stops applying, which matches what
+            // TypeDescriptor now reports.
+            // See: https://learn.microsoft.com/dotnet/api/system.componentmodel.typedescriptor.removeprovider
+            // See: https://github.com/dotnet/runtime/blob/v8.0.0/src/libraries/System.ComponentModel.Annotations/src/System/ComponentModel/DataAnnotations/ValidationAttributeStore.cs
+            [Fact]
+            public void Validation_attribute_removed_at_runtime_stops_applying()
+            {
+                var provider = TypeDescriptor.AddAttributes(typeof(RemovedCheckedColor), new DefinedValueAttribute());
+                try
+                {
+                    var during = Validate(RemovedCheckedColor.Red, (RemovedCheckedColor)99);
+                    Assert.False(during.Valid);
+                    Assert.Equal(1, during.EnumerationCount);
+                }
+                finally
+                {
+                    TypeDescriptor.RemoveProvider(provider, typeof(RemovedCheckedColor));
+                }
+
+                var (valid, results, enumerationCount) = Validate(RemovedCheckedColor.Red, (RemovedCheckedColor)99);
+
+                Assert.True(valid);
+                Assert.Empty(results);
+                Assert.Equal(0, enumerationCount);
+            }
+
+            /// <summary>
+            /// A leaf type with a custom Equals that also matches an Owner with the same Id.
+            /// That breaks the Equals contract, which requires symmetry: Owner.Equals(tag) is false.
+            /// See: https://learn.microsoft.com/dotnet/api/system.object.equals
+            /// </summary>
+            public sealed class Tag
+            {
+                public int Id { get; set; }
+
+                public override bool Equals(object obj) =>
+                    (obj is Tag tag && tag.Id == Id) || (obj is Owner owner && owner.Id == Id);
+
+                public override int GetHashCode() => Id;
+            }
+
+            public class Owner
+            {
+                public int Id { get; set; }
+
+                [Required]
+                public string Name { get; set; }
+
+                // Same hash as a Tag with the same Id, so HashSet compares the two with Equals.
+                public override int GetHashCode() => Id;
+
+                public override bool Equals(object obj) => ReferenceEquals(this, obj);
+            }
+
+            public class TaggedModel
+            {
+                public List<Tag> Tags { get; set; }
+                public Owner Owner { get; set; }
+            }
+
+            // Edge case. The validator remembers every object it has visited in a HashSet, to stop
+            // on cycles. HashSet<object> compares with Equals and GetHashCode, not by reference.
+            // On master, the validator enumerated Tags first and added the Tag to the set. When it
+            // reached Owner, the set's Contains asked the stored Tag whether it Equals the Owner.
+            // Tag said yes, so Owner counted as already validated and its missing Name was never
+            // reported: valid=true with no errors. The validator now skips Tags, because Tag is a
+            // leaf type, so the Tag never enters the set and Owner is validated.
+            // On master, this test only failed when Tags was visited before Owner. Reflection
+            // returns properties in declaration order in practice, but does not promise an order.
+            // See: https://learn.microsoft.com/dotnet/api/system.type.getproperties
+            // The reference-equality fix (see ReferenceEquality) removes this class of problem.
+            [Fact]
+            public void Object_hidden_by_a_cross_type_Equals_is_now_validated()
+            {
+                var model = new TaggedModel
+                {
+                    Tags = new List<Tag> { new Tag { Id = 1 } },
+                    Owner = new Owner { Id = 1 },
+                };
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Owner.Name"));
+            }
+
             public class LazyHolder
             {
                 public IEnumerable<int> Numbers { get; set; }
