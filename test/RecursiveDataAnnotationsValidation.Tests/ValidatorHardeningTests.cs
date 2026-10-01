@@ -351,24 +351,30 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// instead, for example [MaxLength] or a custom attribute that checks each item. The
         /// parent object's validation runs that attribute, so this skip does not affect it.
         ///
-        /// Fix: skip a collection when every element type it declares is a leaf type and no
-        /// validation attribute is attached to that type. Leaf types are the primitives, enums,
-        /// string, decimal, DateTime, DateTimeOffset, TimeSpan and Guid, a Nullable of one of
-        /// those, and a KeyValuePair of two of those (each Dictionary item is a KeyValuePair).
+        /// Fix: skip a collection when every element type it declares is a leaf type: a type
+        /// where validating an item can never produce a result. The rule is a set of checks on
+        /// the type, not a list of type names, so it also covers types the library cannot name,
+        /// such as DateOnly. TypeExtensionsTests lists the four checks.
         /// The element type comes from the array element type, or from each IEnumerable&lt;T&gt; the
-        /// collection implements. The decision is by type, so no enumeration happens.
+        /// collection implements. A Nullable&lt;T&gt; element is checked as T, because a boxed
+        /// Nullable&lt;T&gt; is either null or a boxed T. Each Dictionary item is a KeyValuePair, which
+        /// passes the checks when its Key and Value are a string or a value type.
+        /// The decision is by type, so no enumeration happens.
         /// See: https://learn.microsoft.com/dotnet/api/system.collections.generic.ienumerable-1
         /// See: https://learn.microsoft.com/dotnet/api/system.nullable.getunderlyingtype
         /// See: https://learn.microsoft.com/dotnet/api/system.collections.generic.keyvaluepair-2
         ///
         /// Behavior change: items with nothing to validate are no longer passed to the validator,
-        /// so the validation results do not change. A lazy sequence of these types, such as a
-        /// LINQ query or an IQueryable&lt;int&gt;, is no longer run. LINQ queries use deferred
-        /// execution: the query body runs only when something enumerates it. So an exception the
-        /// query throws while enumerating no longer surfaces during validation.
+        /// so the validation results do not change. No property getter on a skipped item would
+        /// have run either: Validator reads a property's value only when the property has a
+        /// validation attribute (GetPropertyValues), and the walk reads only reference-type
+        /// properties.
+        /// See: https://github.com/dotnet/runtime/blob/v8.0.0/src/libraries/System.ComponentModel.Annotations/src/System/ComponentModel/DataAnnotations/Validator.cs
+        /// A lazy sequence of leaf types, such as a LINQ query or an IQueryable&lt;int&gt;, is no
+        /// longer run. LINQ queries use deferred execution: the query body runs only when
+        /// something enumerates it. So an exception the query throws while enumerating no longer
+        /// surfaces during validation.
         /// See: https://learn.microsoft.com/dotnet/standard/linq/deferred-execution-lazy-evaluation
-        /// Collections of structs or objects are not skipped, because their items can have
-        /// property-level attributes.
         ///
         /// Accepted gap: a type whose non-generic enumerator yields different items than its
         /// IEnumerable&lt;T&gt; breaks the IEnumerable&lt;T&gt; contract. It is skipped by its declared type.
@@ -407,6 +413,33 @@ namespace RecursiveDataAnnotationsValidation.Tests
             {
                 [Range(0, 10)]
                 public int X { get; set; }
+            }
+
+            // No attributes, no IValidatableObject, no reference-type properties.
+            public struct PlainPoint
+            {
+                public int X { get; set; }
+            }
+
+            public struct SelfValidatingPoint : IValidatableObject
+            {
+                public int X { get; set; }
+
+                public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+                {
+                    if (X > 10) yield return new ValidationResult("X must be 10 or less.", new[] { nameof(X) });
+                }
+            }
+
+            // No properties, so no checks fail on the type itself. It is not sealed, though.
+            public class Shape
+            {
+            }
+
+            public class Circle : Shape
+            {
+                [Required]
+                public string Name { get; set; }
             }
 
             /// <summary>Records whether anything enumerated it.</summary>
@@ -578,6 +611,40 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 {
                     TypeDescriptor.RemoveProvider(provider, typeof(LateCheckedColor));
                 }
+            }
+
+            // A user struct with nothing to validate passes the same checks as a built-in type.
+            [Fact]
+            public void Collections_of_structs_with_nothing_to_validate_are_not_enumerated()
+            {
+                AssertNotEnumerated(new PlainPoint { X = 99 });
+            }
+
+            // Guard. Validator calls Validate() on any item that implements IValidatableObject,
+            // including a boxed struct, so these items are still validated.
+            // See: https://learn.microsoft.com/dotnet/api/system.componentmodel.dataannotations.ivalidatableobject
+            [Fact]
+            public void Collections_of_self_validating_structs_are_still_validated()
+            {
+                var (valid, results, enumerationCount) = Validate(new SelfValidatingPoint { X = 11 });
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Items[0].X"));
+                Assert.Equal(1, enumerationCount);
+            }
+
+            // Guard. Shape has nothing to validate, but it is not sealed. A collection declared
+            // with Shape items can hold a Circle, which has its own attributes. Only the runtime
+            // type of each item shows that, so the collection must be enumerated.
+            // See: https://learn.microsoft.com/dotnet/csharp/language-reference/keywords/sealed
+            [Fact]
+            public void Collections_of_an_unsealed_type_still_validate_derived_items()
+            {
+                var (valid, results, enumerationCount) = Validate<Shape>(new Circle());
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Items[0].Name"));
+                Assert.Equal(1, enumerationCount);
             }
 
             // Guard. Items of a user struct can carry attributes, so they are still validated.
