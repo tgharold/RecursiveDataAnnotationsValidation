@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using RecursiveDataAnnotationsValidation.Extensions;
 
@@ -53,7 +52,6 @@ namespace RecursiveDataAnnotationsValidation
                 validationResults,
                 new HashSet<object>(ObjectReferenceComparer.Instance),
                 new List<object>(),
-                default(Source),
                 validationContextItems
                 );
         }
@@ -99,7 +97,6 @@ namespace RecursiveDataAnnotationsValidation
                 validationResults,
                 new HashSet<object>(ObjectReferenceComparer.Instance),
                 new List<object>(),
-                default(Source),
                 validationContextItems
             ));
         }
@@ -129,33 +126,6 @@ namespace RecursiveDataAnnotationsValidation
             );
         }
 
-        /// <summary>
-        /// Where a value came from: the property that was read, the object it was read from,
-        /// and the value that read returned. For a collection item, the value is the collection.
-        /// </summary>
-        private struct Source
-        {
-            private readonly object _owner;
-            private readonly PropertyInfo _property;
-            private readonly object _value;
-
-            public Source(object owner, PropertyInfo property, object value)
-            {
-                _owner = owner;
-                _property = property;
-                _value = value;
-            }
-
-            /// <summary>
-            /// True when a second read of the property returns a different object, so the
-            /// property builds a new one on each read. False for the root object.
-            /// </summary>
-            public bool IsComputed()
-            {
-                return _property != null && !ReferenceEquals(_property.GetValue(_owner, null), _value);
-            }
-        }
-
         //validatedObjects holds every object visited so far, compared by reference.
         //equalityPath holds the objects on the path from the root to this object whose type overrides Equals.
         private bool TryValidateObjectRecursive(
@@ -163,7 +133,6 @@ namespace RecursiveDataAnnotationsValidation
             ICollection<ValidationResult> validationResults,
             ISet<object> validatedObjects,
             List<object> equalityPath,
-            Source source,
             IDictionary<object, object> validationContextItems = null
             )
         {
@@ -183,15 +152,13 @@ namespace RecursiveDataAnnotationsValidation
 
             //a computed property can return a new, equal object on each read, such as
             //`Money Zero => new Money(0)`, so references never repeat and the walk would not end.
-            //Stop at an object that Equals an object of the same type on its own path, but only
-            //when the property it came from is computed. Stored data is still walked, so a child
-            //that Equals its parent by Id is still validated.
+            //Stop at an object that Equals an object on its own path: validate its own attributes,
+            //so a child that Equals its parent by Id is still checked, but don't walk into it.
             var overridesEquals = type.OverridesEquals();
-            if (overridesEquals
-                && equalityPath.Any(ancestor => ancestor.GetType() == type && obj.Equals(ancestor))
-                && source.IsComputed())
+            if (overridesEquals && equalityPath.Any(ancestor => obj.Equals(ancestor)))
             {
-                return true;
+                validatedObjects.Add(obj);
+                return TryValidateObject(obj, validationResults, validationContextItems);
             }
 
             validatedObjects.Add(obj);
@@ -230,7 +197,6 @@ namespace RecursiveDataAnnotationsValidation
                                 nestedResults, 
                                 validatedObjects, 
                                 equalityPath,
-                                new Source(obj, property, value),
                                 validationContextItems
                                 ))
                             {
@@ -257,7 +223,6 @@ namespace RecursiveDataAnnotationsValidation
                             nestedResults, 
                             validatedObjects, 
                             equalityPath,
-                            new Source(obj, property, value),
                             validationContextItems
                             ))
                         {
