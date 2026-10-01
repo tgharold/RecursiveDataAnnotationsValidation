@@ -247,6 +247,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
             public class Folder : Entity
             {
                 public Folder Sub { get; set; }
+
+                public List<Folder> Subs { get; set; }
             }
 
             // The bypass. The second item Equals the first, so on master it counted as already
@@ -278,6 +280,118 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
                 Assert.False(valid);
                 Assert.Contains(results, r => r.MemberNames.Contains("Sub.Name"));
+            }
+
+            // The same, with the child in a list.
+            [Fact]
+            public void Item_with_the_same_Id_as_its_ancestor_is_validated()
+            {
+                var model = new Folder { Id = 1, Name = "root", Subs = new List<Folder> { new Folder { Id = 1 } } };
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Subs[0].Name"));
+            }
+
+            /// <summary>
+            /// A record that replaces the generated equality with equality by Id. A record may
+            /// declare its own Equals(T) and GetHashCode, and the compiler then uses them.
+            /// See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/record#value-equality
+            /// </summary>
+            public record FolderRecord
+            {
+                public int Id { get; init; }
+
+                [Required]
+                public string Name { get; init; }
+
+                public FolderRecord Sub { get; init; }
+
+                public virtual bool Equals(FolderRecord other) => other != null && other.Id == Id;
+                public override int GetHashCode() => Id;
+            }
+
+            // The same bypass with a record. Being a record must not be what decides the skip.
+            [Fact]
+            public void Record_descendant_with_the_same_Id_as_its_ancestor_is_validated()
+            {
+                var model = new FolderRecord { Id = 1, Name = "root", Sub = new FolderRecord { Id = 1 } };
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Sub.Name"));
+            }
+
+            /// <summary>
+            /// A value object: a class with value equality and computed properties that return a
+            /// new, equal Money on each read. The static and sequence forms are walked too.
+            /// </summary>
+            public sealed class Money
+            {
+                public Money(decimal amount) => Amount = amount;
+
+                public decimal Amount { get; }
+
+                public Money Zero => new Money(0);
+
+                public static Money None => new Money(0);
+
+                public IEnumerable<Money> Zeros => new[] { new Money(0) };
+
+                public override bool Equals(object obj) => obj is Money other && other.Amount == Amount;
+                public override int GetHashCode() => Amount.GetHashCode();
+            }
+
+            public class PriceModel
+            {
+                public Money Price { get; set; } = new Money(5);
+            }
+
+            // Guard. On master, value equality stopped each chain at the second Money(0). If this
+            // breaks, the stack overflows and kills the test host (see the Origin guards).
+            [Fact]
+            public void Value_object_property_that_returns_a_new_equal_object_terminates()
+            {
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(new PriceModel(), results);
+
+                Assert.True(valid);
+                Assert.Empty(results);
+            }
+
+            public interface IShape
+            {
+                IShape Unit { get; }
+            }
+
+            // A struct gets value equality from ValueType.Equals, which compares its fields.
+            // Read through an interface, each Unit is boxed into a new object.
+            // See: https://learn.microsoft.com/dotnet/api/system.valuetype.equals
+            public struct Square : IShape
+            {
+                public int Size { get; set; }
+
+                public IShape Unit => new Square { Size = 1 };
+            }
+
+            public class ShapeHolder
+            {
+                public IShape Shape { get; set; } = new Square { Size = 3 };
+            }
+
+            // Guard. The same for a boxed struct.
+            [Fact]
+            public void Boxed_struct_property_that_returns_a_new_equal_value_terminates()
+            {
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(new ShapeHolder(), results);
+
+                Assert.True(valid);
+                Assert.Empty(results);
             }
 
             // Each read of Origin returns a new record that is equal to the last one.
