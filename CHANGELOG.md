@@ -24,6 +24,7 @@ Breaking changes are marked **BREAKING**.
 - An object that is `Equals` to one of its own ancestors of a related type, such as a sub-folder with its parent's `Id`, now has its own attributes validated. The validator still does not walk into it, so a property that builds a new, equal object on each read, such as `Money Zero => new Money(0)`, still stops the walk as before.
 - On .NET 8 and later, two records that reference each other no longer always overflow the stack. They still do when the generated `Equals` reaches the reference before a property that differs, because it compares properties in declaration order. On .NET Framework they still always overflow, inside the framework's `Validator`.
 - A null `validationResults` list no longer throws `NullReferenceException` when a nested object or collection item fails. Like `Validator.TryValidateObject`, the validator now returns false.
+- The service provider of the `ValidationContext` you pass now reaches every object the validator visits, so `ValidationContext.GetService` in an attribute or `IValidatableObject` returns your service instead of null. The overloads that take only context items still have no service provider.
 
 ## 2.2.4 - 2026-10-01
 
