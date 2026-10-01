@@ -132,6 +132,44 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
             Assert.False(type.IsCollectionOfLeafType());
         }
 
+        // Framework types whose properties throw or never end when walked, and types derived from them.
+        [Theory]
+        [InlineData(typeof(Type))]
+        [InlineData(typeof(System.Reflection.MethodInfo))]
+        [InlineData(typeof(System.Reflection.Assembly))]
+        [InlineData(typeof(System.Reflection.Module))]
+        [InlineData(typeof(Action))]
+        [InlineData(typeof(Func<int>))]
+        [InlineData(typeof(Uri))]
+        [InlineData(typeof(System.IO.DirectoryInfo))]
+        [InlineData(typeof(System.IO.FileInfo))]
+        public void Unsafe_to_walk_type_is_detected(Type type)
+        {
+            Assert.True(type.IsUnsafeToWalk());
+        }
+
+        [Fact]
+        public void Runtime_type_object_is_unsafe_to_walk()
+        {
+            // typeof(...) returns a RuntimeType, which derives from Type.
+            Assert.True(typeof(string).GetType().IsUnsafeToWalk());
+        }
+
+        // Framework types that hold user objects, or that do not throw, are still walked.
+        [Theory]
+        [InlineData(typeof(object))]
+        [InlineData(typeof(Child))]
+        [InlineData(typeof(Tuple<Child, int>))]
+        [InlineData(typeof(KeyValuePair<string, Child>))]
+        [InlineData(typeof(List<Child>))]
+        [InlineData(typeof(System.IO.Stream))]
+        [InlineData(typeof(Exception))]
+        [InlineData(typeof(System.Threading.Tasks.Task<Child>))]
+        public void Walkable_type_is_not_detected(Type type)
+        {
+            Assert.False(type.IsUnsafeToWalk());
+        }
+
         public record BaseRecord;
 
         public record DerivedRecord : BaseRecord;

@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Dynamic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Xml.Linq;
@@ -21,13 +22,10 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// - A limitation guard. It passes today and shows a shape that is silently not validated.
     ///   If the validator learns to walk that shape, the test fails on purpose, so the change is deliberate.
     /// - An open test. It is skipped and states the behavior a fix would give.
-    /// Every result below is the same on release 2.2.0 and on the current code.
-    /// Not covered, because they stop the test run:
-    /// - DirectoryInfo and FileInfo properties overflow the stack, which cannot be caught.
-    ///   Each read of DirectoryInfo.Root returns a new DirectoryInfo that has its own Root, and
-    ///   neither overrides Equals, so the walk never meets an object it has seen.
-    ///   The cause was inferred from the property list. The crash was observed.
-    /// - A Task that has not completed makes the walk read Task.Result, which waits forever.
+    /// Every result below is the same on release 2.2.0 and on the current code, except the
+    /// framework types in MembersThatThrow, which are no longer walked.
+    /// Not covered, because it stops the test run: a Task that has not completed makes the walk
+    /// read Task.Result, which waits forever.
     /// </summary>
     public class OddShapeTests
     {
@@ -454,19 +452,25 @@ namespace RecursiveDataAnnotationsValidation.Tests
         }
 
         /// <summary>
-        /// Properties whose type makes the walk throw. Reading some properties of a framework type
-        /// throws, and the validator reads every property of a reference type. The exception
-        /// reaches the caller as a TargetInvocationException.
+        /// Properties whose type made the walk throw or never end. Reading some properties of a
+        /// framework type throws, and the validator reads every property of a reference type.
+        /// The exception reached the caller as a TargetInvocationException.
         /// - A relative Uri throws from Segments and other members that need an absolute Uri.
         /// - A delegate has a Method property, which returns a MethodInfo whose own properties throw.
-        /// The same cause is behind the open Type property test in ValidatorHardeningTests.
-        /// A framework-type skip rule is not decided yet, so these are open tests.
+        /// - DirectoryInfo and FileInfo overflowed the stack, which cannot be caught. Each read of
+        ///   DirectoryInfo.Root returns a new DirectoryInfo that has its own Root, and neither
+        ///   overrides Equals, so the walk never met an object it had seen.
+        /// These types are now on the validator's deny list (IsUnsafeToWalk), so they are neither
+        /// validated nor walked. ValidatorHardeningTests.FrameworkTypes covers the rest of the list.
+        /// If the deny list loses DirectoryInfo or FileInfo, those tests crash the test host
+        /// instead of failing.
         /// See: https://learn.microsoft.com/dotnet/api/system.uri.segments
         /// See: https://learn.microsoft.com/dotnet/api/system.delegate.method
+        /// See: https://learn.microsoft.com/dotnet/api/system.io.directoryinfo.root
         /// </summary>
         public class MembersThatThrow
         {
-            [Fact(Skip = "Not fixed yet. A relative Uri makes the walk throw. The framework-type skip rule needs a decision.")]
+            [Fact]
             public void Relative_uri_property_does_not_throw()
             {
                 var valid = false;
@@ -477,7 +481,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.True(valid);
             }
 
-            [Fact(Skip = "Not fixed yet. A delegate property makes the walk throw. The framework-type skip rule needs a decision.")]
+            [Fact]
             public void Delegate_property_does_not_throw()
             {
                 var valid = false;
@@ -486,6 +490,24 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
                 Assert.Null(ex);
                 Assert.True(valid);
+            }
+
+            [Fact]
+            public void Directory_info_property_does_not_overflow()
+            {
+                var (valid, errors) = Run(new Holder<DirectoryInfo> { Value = new DirectoryInfo(Path.GetTempPath()) });
+
+                Assert.True(valid);
+                Assert.Empty(errors);
+            }
+
+            [Fact]
+            public void File_info_property_does_not_overflow()
+            {
+                var (valid, errors) = Run(new Holder<FileInfo> { Value = new FileInfo(Path.Combine(Path.GetTempPath(), "missing.txt")) });
+
+                Assert.True(valid);
+                Assert.Empty(errors);
             }
 
             [Fact]
