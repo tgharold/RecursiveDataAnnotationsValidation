@@ -310,6 +310,35 @@ namespace RecursiveDataAnnotationsValidation.Tests
             }
 
             /// <summary>
+            /// A common domain-model pattern: the children are stored in a private list, and the
+            /// public property wraps it in a new read-only view on each read.
+            /// See: https://learn.microsoft.com/dotnet/api/system.collections.generic.list-1.asreadonly
+            /// </summary>
+            public class Category : Entity
+            {
+                private readonly List<Category> _children = new List<Category>();
+
+                public IReadOnlyCollection<Category> Children => _children.AsReadOnly();
+
+                public void Add(Category child) => _children.Add(child);
+            }
+
+            // The same bypass, with the child behind a read-only wrapper. Each read of Children
+            // returns a new wrapper, so the property looks computed even though the child is stored.
+            [Fact]
+            public void Item_in_a_read_only_wrapper_with_the_same_Id_as_its_ancestor_is_validated()
+            {
+                var model = new Category { Id = 1, Name = "root" };
+                model.Add(new Category { Id = 1 });
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Children[0].Name"));
+            }
+
+            /// <summary>
             /// A record that replaces the generated equality with equality by Id. A record may
             /// declare its own Equals(T) and GetHashCode, and the compiler then uses them.
             /// See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/record#value-equality
@@ -341,8 +370,28 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.Contains(results, r => r.MemberNames.Contains("Sub.Name"));
             }
 
+            // Known gap, the same as on master. The middle folder Equals the root, so the
+            // validator checks the middle folder's own attributes but does not walk into it.
+            // The invalid folder below it is never reached.
+            [Fact(Skip = "Known gap. The walk stops at an object that Equals one of its ancestors.")]
+            public void Invalid_object_below_a_copy_of_its_ancestor_is_validated()
+            {
+                var model = new Folder
+                {
+                    Id = 1,
+                    Name = "root",
+                    Sub = new Folder { Id = 1, Name = "copy", Sub = new Folder { Id = 2 } }
+                };
+
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
+
+                Assert.False(valid);
+                Assert.Contains(results, r => r.MemberNames.Contains("Sub.Sub.Name"));
+            }
+
             /// <summary>
-            /// A value object: a class with value equality and computed properties that return a
+            /// A value object:a class with value equality and computed properties that return a
             /// new, equal Money on each read. The static and sequence forms are walked too.
             /// </summary>
             public sealed class Money
@@ -373,6 +422,47 @@ namespace RecursiveDataAnnotationsValidation.Tests
             {
                 var results = new List<ValidationResult>();
                 var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(new PriceModel(), results);
+
+                Assert.True(valid);
+                Assert.Empty(results);
+            }
+
+            /// <summary>
+            /// The same value object, but Zeros is stored. It holds a LINQ query, and LINQ runs
+            /// a query again each time it is enumerated (deferred execution). So the property
+            /// returns the same sequence object on each read, but each enumeration of it yields a
+            /// new, equal LazyMoney.
+            /// See: https://learn.microsoft.com/dotnet/standard/linq/deferred-execution-lazy-evaluation
+            /// </summary>
+            public sealed class LazyMoney
+            {
+                public LazyMoney(decimal amount)
+                {
+                    Amount = amount;
+                    Zeros = Enumerable.Range(0, 1).Select(_ => new LazyMoney(0));
+                }
+
+                public decimal Amount { get; }
+
+                public IEnumerable<LazyMoney> Zeros { get; }
+
+                public override bool Equals(object obj) => obj is LazyMoney other && other.Amount == Amount;
+                public override int GetHashCode() => Amount.GetHashCode();
+            }
+
+            public class LazyPriceModel
+            {
+                public LazyMoney Price { get; set; } = new LazyMoney(5);
+            }
+
+            // Guard. On master, value equality stopped the chain at the second LazyMoney(0). A
+            // check that asks whether the property is computed misses this one, because the
+            // property is stored, and the walk overflows the stack.
+            [Fact]
+            public void Stored_sequence_that_yields_new_equal_objects_terminates()
+            {
+                var results = new List<ValidationResult>();
+                var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(new LazyPriceModel(), results);
 
                 Assert.True(valid);
                 Assert.Empty(results);
@@ -472,6 +562,11 @@ namespace RecursiveDataAnnotationsValidation.Tests
             // GetHashCode, which hashes Next, whose GetHashCode hashes Next again, forever.
             // The reference comparer never calls GetHashCode on the model. This test is not in
             // the spec commit because the overflow would kill the test host there.
+            // Field order matters. The generated Equals compares fields in declaration order and
+            // stops at the first difference. Name is declared first and differs, so Equals stops
+            // before it reaches Next. With Next declared first, or with equal names, Equals
+            // follows the cycle forever and the stack overflows. That is a known gap.
+            // See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/record#value-equality
             [Fact]
             public void Records_that_reference_each_other_are_validated()
             {
