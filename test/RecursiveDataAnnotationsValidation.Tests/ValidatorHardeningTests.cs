@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.IO;
 using System.IO.Compression;
@@ -318,27 +319,86 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// <summary>
         /// Every IEnumerable property is fully enumerated, and each item is run through
         /// validation. For a byte[] with a million bytes, that boxes a million objects and
-        /// validates each one. Items such as ints and strings have no DataAnnotations to check.
+        /// validates each one.
         /// Problem: wasted CPU and memory on large payloads. It is a denial-of-service
         /// vector for model-bound input.
-        /// Fix: skip a collection when every element type it declares is a primitive, an enum,
-        /// string, decimal, DateTime, DateTimeOffset, TimeSpan or Guid, a Nullable of one of
-        /// those, or a KeyValuePair of two of those. The element type comes from the array element
-        /// type, or from each IEnumerable&lt;T&gt; the collection implements. The decision is by type,
-        /// so no enumeration happens.
-        /// Behavior change: items of these types are no longer passed to the validator. They carry
-        /// no attributes, so the results do not change. A lazy sequence of these types, such as a
-        /// LINQ query or an IQueryable&lt;int&gt;, is no longer run, so an exception it throws while
-        /// enumerating no longer surfaces. Collections of structs or objects are not skipped,
-        /// because their items can have attributes.
+        ///
+        /// How an item is validated. The validator enumerates the collection through the
+        /// non-generic IEnumerable, so each item arrives as an object. A value type such as int is
+        /// boxed: copied into a new heap object. The validator then calls
+        /// Validator.TryValidateObject on that object. It checks two kinds of attributes:
+        /// - Type-level attributes, declared on the item's type itself.
+        /// - Property-level attributes, declared on the item's properties.
+        /// Validator reads both through TypeDescriptor, not plain reflection. TypeDescriptor
+        /// returns the attributes in the source code plus any added at runtime with
+        /// TypeDescriptor.AddAttributes.
+        /// See: https://learn.microsoft.com/dotnet/csharp/programming-guide/types/boxing-and-unboxing
+        /// See: https://learn.microsoft.com/dotnet/api/system.componentmodel.dataannotations.validator.tryvalidateobject
+        /// See: https://learn.microsoft.com/dotnet/api/system.componentmodel.typedescriptor.getattributes
+        /// See (Validator's attribute lookup): https://github.com/dotnet/runtime/blob/v8.0.0/src/libraries/System.ComponentModel.Annotations/src/System/ComponentModel/DataAnnotations/ValidationAttributeStore.cs
+        ///
+        /// Where attributes can come from. Built-in types such as int, string and DateTime have
+        /// no validation attributes in their source, and you cannot edit that source. Two routes
+        /// remain, and both are validated today:
+        /// - An enum is your own type. A custom ValidationAttribute declared with
+        ///   [AttributeUsage(AttributeTargets.Enum)] can go on the enum declaration. It then runs
+        ///   for every enum item in a collection.
+        /// - TypeDescriptor.AddAttributes can attach an attribute to any type at runtime,
+        ///   including int.
+        /// See: https://learn.microsoft.com/dotnet/api/system.attributetargets
+        /// See: https://learn.microsoft.com/dotnet/api/system.componentmodel.typedescriptor.addattributes
+        /// To limit the values inside a collection, put the attribute on the collection property
+        /// instead, for example [MaxLength] or a custom attribute that checks each item. The
+        /// parent object's validation runs that attribute, so this skip does not affect it.
+        ///
+        /// Fix: skip a collection when every element type it declares is a leaf type and no
+        /// validation attribute is attached to that type. Leaf types are the primitives, enums,
+        /// string, decimal, DateTime, DateTimeOffset, TimeSpan and Guid, a Nullable of one of
+        /// those, and a KeyValuePair of two of those (each Dictionary item is a KeyValuePair).
+        /// The element type comes from the array element type, or from each IEnumerable&lt;T&gt; the
+        /// collection implements. The decision is by type, so no enumeration happens.
+        /// See: https://learn.microsoft.com/dotnet/api/system.collections.generic.ienumerable-1
+        /// See: https://learn.microsoft.com/dotnet/api/system.nullable.getunderlyingtype
+        /// See: https://learn.microsoft.com/dotnet/api/system.collections.generic.keyvaluepair-2
+        ///
+        /// Behavior change: items with nothing to validate are no longer passed to the validator,
+        /// so the validation results do not change. A lazy sequence of these types, such as a
+        /// LINQ query or an IQueryable&lt;int&gt;, is no longer run. LINQ queries use deferred
+        /// execution: the query body runs only when something enumerates it. So an exception the
+        /// query throws while enumerating no longer surfaces during validation.
+        /// See: https://learn.microsoft.com/dotnet/standard/linq/deferred-execution-lazy-evaluation
+        /// Collections of structs or objects are not skipped, because their items can have
+        /// property-level attributes.
+        ///
         /// Accepted gap: a type whose non-generic enumerator yields different items than its
         /// IEnumerable&lt;T&gt; breaks the IEnumerable&lt;T&gt; contract. It is skipped by its declared type.
+        /// Known gap, not changed here: a type-level error on an item, such as the enum attribute
+        /// above, has no member names. The validator builds each path by prefixing the item's
+        /// member names, so that error is reported with no path at all.
         /// Not solved here: lazy or infinite sequences of objects, and lazy queryables of objects
         /// that hit a database. Those need a separate decision.
         /// </summary>
         public class PrimitiveCollections
         {
             public enum Color { Red, Green }
+
+            /// <summary>
+            /// Fails for a value that is not a named member of its enum, such as (CheckedColor)99.
+            /// A cast from an int to an enum never checks that the value is defined.
+            /// See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/enum
+            /// </summary>
+            [AttributeUsage(AttributeTargets.Enum)]
+            public class DefinedValueAttribute : ValidationAttribute
+            {
+                public override bool IsValid(object value) =>
+                    value == null || Enum.IsDefined(value.GetType(), value);
+            }
+
+            [DefinedValue]
+            public enum CheckedColor { Red, Green }
+
+            // No attribute in source. A test adds one at runtime with TypeDescriptor.
+            public enum RuntimeCheckedColor { Red, Green }
 
             public struct Point
             {
@@ -442,6 +502,50 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.False(valid);
                 Assert.Contains(results, r => r.MemberNames.Contains("Items[0].Name"));
                 Assert.Equal(1, enumerationCount);
+            }
+
+            // Guard. An enum is a leaf type, but this one has a type-level validation attribute
+            // in its source. Each item must still be validated. The error has no member names,
+            // so this test checks the count only (see the class summary).
+            [Fact]
+            public void Collections_of_enums_with_a_validation_attribute_are_still_validated()
+            {
+                var (valid, results, enumerationCount) = Validate(CheckedColor.Red, (CheckedColor)99);
+
+                Assert.False(valid);
+                Assert.Single(results);
+                Assert.Equal(1, enumerationCount);
+            }
+
+            // Guard. The same check for an attribute attached at runtime with
+            // TypeDescriptor.AddAttributes. Validator sees these attributes too.
+            // This test uses its own enum, for two reasons:
+            // - TypeDescriptor state is global to the process. Adding an attribute to a shared
+            //   type such as int would affect other tests that xUnit runs in parallel.
+            // - Validator caches each type's attributes the first time it validates that type,
+            //   and never refreshes the cache. If another test had already validated this type,
+            //   Validator would ignore the new attribute and this test would pass for the
+            //   wrong reason.
+            // RemoveProvider undoes the AddAttributes call, so the type is clean afterwards.
+            // See: https://learn.microsoft.com/dotnet/api/system.componentmodel.typedescriptor.addattributes
+            // See: https://learn.microsoft.com/dotnet/api/system.componentmodel.typedescriptor.removeprovider
+            // See: https://xunit.net/docs/running-tests-in-parallel
+            [Fact]
+            public void Collections_of_a_type_with_a_runtime_validation_attribute_are_still_validated()
+            {
+                var provider = TypeDescriptor.AddAttributes(typeof(RuntimeCheckedColor), new DefinedValueAttribute());
+                try
+                {
+                    var (valid, results, enumerationCount) = Validate(RuntimeCheckedColor.Red, (RuntimeCheckedColor)99);
+
+                    Assert.False(valid);
+                    Assert.Single(results);
+                    Assert.Equal(1, enumerationCount);
+                }
+                finally
+                {
+                    TypeDescriptor.RemoveProvider(provider, typeof(RuntimeCheckedColor));
+                }
             }
 
             // Guard. Items of a user struct can carry attributes, so they are still validated.
