@@ -8,6 +8,10 @@ Breaking changes are marked **BREAKING**.
 
 ## Unreleased
 
+### Changed
+
+- A null `validationContext` now throws `ArgumentNullException` instead of `NullReferenceException`. A null `obj` still throws `ArgumentNullException`, but its `ParamName` is now `obj` instead of `instance`.
+
 ## 2.2.3 - 2026-09-30
 
 No library changes. The NuGet package contents are the same as v2.2.0.

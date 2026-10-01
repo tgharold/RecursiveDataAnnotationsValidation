@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -16,12 +17,16 @@ namespace RecursiveDataAnnotationsValidation
         /// <param name="validationContext">Validation context.</param>
         /// <param name="validationResults">A collection that will be populated if validation errors occur.</param>
         /// <returns>Returns true if all validation passes.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="obj"/> or <paramref name="validationContext"/> is null.</exception>
         public bool TryValidateObjectRecursive(
             object obj,  // see Note 1 
             ValidationContext validationContext, 
             List<ValidationResult> validationResults
             )
         {
+            if (obj == null) throw new ArgumentNullException(nameof(obj));
+            if (validationContext == null) throw new ArgumentNullException(nameof(validationContext));
+
             return TryValidateObjectRecursive(
                 obj,
                 validationResults,
@@ -34,12 +39,15 @@ namespace RecursiveDataAnnotationsValidation
         /// <param name="validationResults">A collection that will be populated if validation errors occur.</param>
         /// <param name="validationContextItems">Validation context items.</param>
         /// <returns>Returns true if all validation passes.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="obj"/> is null.</exception>
         public bool TryValidateObjectRecursive(
             object obj,
             List<ValidationResult> validationResults,
             IDictionary<object, object> validationContextItems = null
             )
         {
+            if (obj == null) throw new ArgumentNullException(nameof(obj));
+
             return TryValidateObjectRecursive(
                 obj,
                 validationResults,
@@ -53,12 +61,16 @@ namespace RecursiveDataAnnotationsValidation
         /// <param name="validationContext">Validation context.</param>
         /// <param name="validationResults">A collection that will be populated if validation errors occur.</param>
         /// <returns>Returns true if all validation passes.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="obj"/> or <paramref name="validationContext"/> is null.</exception>
         public async Task<bool> TryValidateObjectRecursiveAsync(
             object obj,
             ValidationContext validationContext,
             List<ValidationResult> validationResults
             )
         {
+            if (obj == null) throw new ArgumentNullException(nameof(obj));
+            if (validationContext == null) throw new ArgumentNullException(nameof(validationContext));
+
             return await Task.Run(() => TryValidateObjectRecursive(
                 obj,
                 validationResults,
@@ -71,12 +83,15 @@ namespace RecursiveDataAnnotationsValidation
         /// <param name="validationResults">A collection that will be populated if validation errors occur.</param>
         /// <param name="validationContextItems">Validation context items.</param>
         /// <returns>Returns true if all validation passes.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="obj"/> is null.</exception>
         public async Task<bool> TryValidateObjectRecursiveAsync(
             object obj,
             List<ValidationResult> validationResults,
             IDictionary<object, object> validationContextItems = null
             )
         {
+            if (obj == null) throw new ArgumentNullException(nameof(obj));
+
             return await Task.Run(() => TryValidateObjectRecursive(
                 obj,
                 validationResults,

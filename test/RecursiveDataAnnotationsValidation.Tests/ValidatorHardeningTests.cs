@@ -30,35 +30,33 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
         /// <summary>
         /// Null arguments.
-        /// Problem: a null validationContext throws NullReferenceException (at validationContext.Items).
-        /// That hides the real mistake from the caller.
-        /// Proposed fix: in each public overload, throw ArgumentNullException for a null obj
-        /// and a null validationContext, with the matching parameter name.
-        /// Behavior change: the exception type changes from NullReferenceException to
-        /// ArgumentNullException. Callers that catch NullReferenceException would be affected.
-        /// A null obj already throws ArgumentNullException before any fix. The framework's ValidationContext
-        /// throws it with param name "instance". The obj tests only guard the exception type,
-        /// so a fix may keep or replace that exception.
+        /// Each public overload throws ArgumentNullException for a null obj or a null
+        /// validationContext, with the matching parameter name.
+        /// Before this guard, a null validationContext threw NullReferenceException (at
+        /// validationContext.Items), and a null obj threw ArgumentNullException from the
+        /// framework's ValidationContext with param name "instance".
         /// </summary>
         public class NullGuards
         {
             [Fact]
             public void Null_object_throws_ArgumentNullException_with_validation_context()
             {
-                Assert.Throws<ArgumentNullException>(() =>
+                var ex = Assert.Throws<ArgumentNullException>(() =>
                     new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(
                         null,
                         new ValidationContext(new object()),
                         new List<ValidationResult>()));
+                Assert.Equal("obj", ex.ParamName);
             }
 
             [Fact]
             public void Null_object_throws_ArgumentNullException_with_context_items()
             {
-                Assert.Throws<ArgumentNullException>(() =>
+                var ex = Assert.Throws<ArgumentNullException>(() =>
                     new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(
                         null,
                         new List<ValidationResult>()));
+                Assert.Equal("obj", ex.ParamName);
             }
 
             [Fact]
@@ -75,20 +73,22 @@ namespace RecursiveDataAnnotationsValidation.Tests
             [Fact]
             public async Task Null_object_throws_ArgumentNullException_async_with_validation_context()
             {
-                await Assert.ThrowsAsync<ArgumentNullException>(() =>
+                var ex = await Assert.ThrowsAsync<ArgumentNullException>(() =>
                     new RecursiveDataAnnotationValidator().TryValidateObjectRecursiveAsync(
                         null,
                         new ValidationContext(new object()),
                         new List<ValidationResult>()));
+                Assert.Equal("obj", ex.ParamName);
             }
 
             [Fact]
             public async Task Null_object_throws_ArgumentNullException_async_with_context_items()
             {
-                await Assert.ThrowsAsync<ArgumentNullException>(() =>
+                var ex = await Assert.ThrowsAsync<ArgumentNullException>(() =>
                     new RecursiveDataAnnotationValidator().TryValidateObjectRecursiveAsync(
                         null,
                         new List<ValidationResult>()));
+                Assert.Equal("obj", ex.ParamName);
             }
 
             [Fact]
