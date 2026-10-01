@@ -8,9 +8,13 @@ Breaking changes are marked **BREAKING**.
 
 ## Unreleased
 
+## 2.2.4 - 2026-10-01
+
 ### Changed
 
 - A null `validationContext` now throws `ArgumentNullException` instead of `NullReferenceException`. A null `obj` still throws `ArgumentNullException`, but its `ParamName` is now `obj` instead of `instance`.
+- Add `CHANGELOG.md`. It replaces `BREAKING-CHANGES.md`.
+- Release workflow: generate GitHub release notes. Mark only tags with a suffix, such as `v1.5.0-alpha.1`, as prereleases, so a stable release can be Latest.
 
 ### Fixed
 
