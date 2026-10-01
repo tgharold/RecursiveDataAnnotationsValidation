@@ -152,7 +152,7 @@ namespace RecursiveDataAnnotationsValidation
                     case null:
                         continue;
 
-                    //items of these types carry no attributes, so don't enumerate them
+                    //items of a leaf type can never produce a result, so don't enumerate them (see IsLeafType)
                     case IEnumerable _ when value.GetType().IsCollectionOfLeafType():
                         continue;
 

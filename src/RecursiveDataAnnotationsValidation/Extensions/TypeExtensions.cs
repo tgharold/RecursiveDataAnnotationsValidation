@@ -69,11 +69,11 @@ namespace RecursiveDataAnnotationsValidation.Extensions
         /// </summary>
         public static bool IsWalked(this PropertyInfo property)
         {
-            return property.CanRead
-                && !property.GetCustomAttributes(typeof(SkipRecursiveValidationAttribute), false).Any()
+            return property.PropertyType != typeof(string)
+                && !property.PropertyType.IsValueType
+                && property.CanRead
                 && property.GetIndexParameters().Length == 0
-                && property.PropertyType != typeof(string)
-                && !property.PropertyType.IsValueType;
+                && !property.IsDefined(typeof(SkipRecursiveValidationAttribute), false);
         }
 
         private static Type[] FindElementTypes(Type collectionType)
