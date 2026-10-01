@@ -99,5 +99,70 @@ namespace RecursiveDataAnnotationsValidation.Tests
             var actual = results.Select(r => $"{string.Join(",", r.MemberNames)} | {r.ErrorMessage}");
             Assert.Equal(expected.OrderBy(x => x), actual.OrderBy(x => x));
         }
+
+        /// <summary>
+        /// Validator calls Validate() on any object that implements IValidatableObject, and keeps
+        /// the member names that Validate() returns.
+        /// See: https://learn.microsoft.com/dotnet/api/system.componentmodel.dataannotations.ivalidatableobject
+        /// </summary>
+        public class Bounds : IValidatableObject
+        {
+            public int Low { get; set; }
+            public int High { get; set; }
+
+            public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+            {
+                // One result that names two members.
+                if (Low > High) yield return new ValidationResult("Low must not exceed High.", new[] { nameof(Low), nameof(High) });
+
+                // A type-level result that names no member.
+                if (Low < 0) yield return new ValidationResult("The range is negative.");
+            }
+        }
+
+        public class Container
+        {
+            public Note[] NoteArray { get; set; }
+            public List<Note> NoteList { get; set; }
+            public Dictionary<string, Note> NoteMap { get; set; }
+            public List<Bounds> Ranges { get; set; }
+        }
+
+        // Each case below shows one rule for building the member name:
+        // - An array item gets an index like a list item.
+        // - A null item is skipped but still uses up its index: NoteList[1], not NoteList[0].
+        // - A dictionary item is a KeyValuePair, so its value is reached through ".Value", and the
+        //   index is the position in enumeration order, not the key.
+        // - A result with two member names gets the prefix on each of them.
+        // - A result with no member names has no path at all once nested. This is a known gap
+        //   (see ValidatorHardeningTests.PrimitiveCollections). If it is fixed, this guard fails
+        //   on purpose, because the format callers see changes.
+        // See: https://learn.microsoft.com/dotnet/api/system.collections.generic.keyvaluepair-2
+        [Fact]
+        public void Collection_items_keep_their_member_names()
+        {
+            var container = new Container
+            {
+                NoteArray = new[] { new Note() },
+                NoteList = new List<Note> { null, new Note() },
+                NoteMap = new Dictionary<string, Note> { ["first"] = new Note() },
+                Ranges = new List<Bounds> { new Bounds { Low = -1, High = -5 } },
+            };
+
+            var results = new List<ValidationResult>();
+            var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(container, results);
+
+            Assert.False(valid);
+            var expected = new[]
+            {
+                "NoteArray[0].Text | The Text field is required.",
+                "NoteList[1].Text | The Text field is required.",
+                "NoteMap[0].Value.Text | The Text field is required.",
+                "Ranges[0].Low,Ranges[0].High | Low must not exceed High.",
+                " | The range is negative.",
+            };
+            var actual = results.Select(r => $"{string.Join(",", r.MemberNames)} | {r.ErrorMessage}");
+            Assert.Equal(expected.OrderBy(x => x), actual.OrderBy(x => x));
+        }
     }
 }
