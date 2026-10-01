@@ -26,9 +26,10 @@ namespace RecursiveDataAnnotationsValidation
             if (obj == null) throw new ArgumentNullException(nameof(obj));
             if (validationContext == null) throw new ArgumentNullException(nameof(validationContext));
 
-            return TryValidateObjectRecursive(
+            return TryValidateGraph(
                 obj,
                 validationResults,
+                validationContext,
                 validationContext.Items
             );
         }
@@ -47,16 +48,12 @@ namespace RecursiveDataAnnotationsValidation
         {
             if (obj == null) throw new ArgumentNullException(nameof(obj));
 
-            //like Validator.TryValidateObject, a null list means the caller wants only the return value
-            validationResults = validationResults ?? new List<ValidationResult>();
-
-            return TryValidateObjectRecursive(
+            return TryValidateGraph(
                 obj,
                 validationResults,
-                new HashSet<object>(ObjectReferenceComparer.Instance),
-                new List<object>(),
+                null,
                 validationContextItems
-                );
+            );
         }
 
         /// <summary>Runs async validation on an object.</summary>
@@ -74,9 +71,10 @@ namespace RecursiveDataAnnotationsValidation
             if (obj == null) throw new ArgumentNullException(nameof(obj));
             if (validationContext == null) throw new ArgumentNullException(nameof(validationContext));
 
-            return await Task.Run(() => TryValidateObjectRecursive(
+            return await Task.Run(() => TryValidateGraph(
                 obj,
                 validationResults,
+                validationContext,
                 validationContext.Items
             ));
         }
@@ -95,16 +93,35 @@ namespace RecursiveDataAnnotationsValidation
         {
             if (obj == null) throw new ArgumentNullException(nameof(obj));
 
+            return await Task.Run(() => TryValidateGraph(
+                obj,
+                validationResults,
+                null,
+                validationContextItems
+            ));
+        }
+
+        //serviceProvider is the caller's ValidationContext, or null when the caller passed only items.
+        //Validator passes the outer context as the service provider of each context it builds, so
+        //GetService on a context built here reaches the caller's provider the same way.
+        private bool TryValidateGraph(
+            object obj,
+            List<ValidationResult> validationResults,
+            IServiceProvider serviceProvider,
+            IDictionary<object, object> validationContextItems
+            )
+        {
             //like Validator.TryValidateObject, a null list means the caller wants only the return value
             validationResults = validationResults ?? new List<ValidationResult>();
 
-            return await Task.Run(() => TryValidateObjectRecursive(
+            return TryValidateObjectRecursive(
                 obj,
                 validationResults,
                 new HashSet<object>(ObjectReferenceComparer.Instance),
                 new List<object>(),
+                serviceProvider,
                 validationContextItems
-            ));
+                );
         }
 
         /// <summary>
@@ -112,19 +129,21 @@ namespace RecursiveDataAnnotationsValidation
         /// </summary>
         /// <param name="obj">The object to validate.</param>
         /// <param name="validationResults">A collection to receive any validation errors.</param>
+        /// <param name="serviceProvider">Service provider for the validation context, or null.</param>
         /// <param name="validationContextItems">Optional context items for the validation context.</param>
         /// <returns>True if the object is valid; otherwise, false.</returns>
         private bool TryValidateObject(
             object obj, 
             ICollection<ValidationResult> validationResults, 
-            IDictionary<object, object> validationContextItems = null
+            IServiceProvider serviceProvider,
+            IDictionary<object, object> validationContextItems
             )
         {
             return Validator.TryValidateObject(
                 obj, 
                 new ValidationContext(
                     obj, 
-                    null,
+                    serviceProvider,
                     validationContextItems
                 ), 
                 validationResults, 
@@ -158,7 +177,8 @@ namespace RecursiveDataAnnotationsValidation
             ICollection<ValidationResult> validationResults,
             ISet<object> validatedObjects,
             List<object> equalityPath,
-            IDictionary<object, object> validationContextItems = null
+            IServiceProvider serviceProvider,
+            IDictionary<object, object> validationContextItems
             )
         {
             var type = obj.GetType();
@@ -183,13 +203,13 @@ namespace RecursiveDataAnnotationsValidation
             if (overridesEquals && EqualsAnAncestor(obj, type, equalityPath))
             {
                 validatedObjects.Add(obj);
-                return TryValidateObject(obj, validationResults, validationContextItems);
+                return TryValidateObject(obj, validationResults, serviceProvider, validationContextItems);
             }
 
             validatedObjects.Add(obj);
             if (overridesEquals) equalityPath.Add(obj);
 
-            var result = TryValidateObject(obj, validationResults, validationContextItems);
+            var result = TryValidateObject(obj, validationResults, serviceProvider, validationContextItems);
 
             var properties = type.GetProperties().Where(prop => prop.IsWalked()).ToList();
 
@@ -222,6 +242,7 @@ namespace RecursiveDataAnnotationsValidation
                                 nestedResults, 
                                 validatedObjects, 
                                 equalityPath,
+                                serviceProvider,
                                 validationContextItems
                                 ))
                             {
@@ -248,6 +269,7 @@ namespace RecursiveDataAnnotationsValidation
                             nestedResults, 
                             validatedObjects, 
                             equalityPath,
+                            serviceProvider,
                             validationContextItems
                             ))
                         {
