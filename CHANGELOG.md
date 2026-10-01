@@ -8,6 +8,11 @@ Breaking changes are marked **BREAKING**.
 
 ## Unreleased
 
+### Changed
+
+- Collection properties are no longer enumerated when their declared item type has nothing to validate: a value type or sealed class with no validation attribute on the type or its properties, no `IValidatableObject` implementation, and no property the validator walks into. Examples are primitives, enums, `string`, `DateTime`, `Guid` and `DateOnly`, and `Nullable` and `KeyValuePair` items of these types. Attributes added with `TypeDescriptor.AddAttributes` count, so validation results do not change. Large payloads such as a `byte[]` or a `Dictionary<string, string>` validate much faster.
+- Because these collections are no longer enumerated, their enumerators no longer run during validation. A lazy sequence such as a LINQ query or an `IQueryable<int>` is not executed, so an exception it would throw while enumerating no longer surfaces.
+
 ## 2.2.4 - 2026-10-01
 
 ### Changed
