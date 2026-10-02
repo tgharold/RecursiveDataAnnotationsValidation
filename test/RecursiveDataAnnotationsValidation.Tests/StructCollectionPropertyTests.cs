@@ -28,10 +28,13 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// as for a collection that is a class: Value[0].Name.
     /// - A struct that is not a collection, such as a Money, is still skipped. An attribute on
     ///   its members is still not checked (see OddShapeTests.StructsAreNotWalked).
-    /// - A struct in a property that equals its default value, such as a default ImmutableArray or
+    /// - A struct in a property that is its default value, such as a default ImmutableArray or
     ///   ArraySegment, is skipped, as an item is (see NestedCollectionEdgeCaseTests, Case 2). It
-    ///   passed before, and enumerating it would add a crash. A struct with no fields always
-    ///   equals its default, so it is skipped too.
+    ///   passed before, and enumerating it would add a crash. The check compares memory, and does
+    ///   not call the struct's Equals (see StructsWithOddEquals). A struct with no fields is
+    ///   always default, so a property of that struct type is skipped too. Only a property declared
+    ///   as a struct is skipped this way. A property declared as an interface or object was always
+    ///   enumerated, and still is.
     /// - A struct collection that throws when enumerated throws from the property too, like an
     ///   item and like a class. This is a change for the few models that hold one.
     /// - Check 4 of IsLeafType uses IsWalked, so a struct with such a property is no longer a
@@ -254,7 +257,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
         }
 
         // A struct collection that throws when it is enumerated throws from a property, like an
-        // item (NestedCollectionEdgeCaseTests, Case 1). It passes today, because it is not read.
+        // item (NestedCollectionEdgeCaseTests, Case 1). It passed before 3.0, because the property was not read.
         [Fact]
         public void Struct_collection_property_that_throws_when_enumerated_propagates()
         {
@@ -295,7 +298,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             Assert.Equal(ResultText.Expect("Value[0][0].Name" + NameRequired), errors);
         }
 
-        // Guard. A default ImmutableArray in a property passes today and must pass after the fix.
+        // Guard. A default ImmutableArray in a property passed before the fix and still passes.
         // Enumerating it throws, so the fix has to skip it, as it does for an item.
         [Fact]
         public void Default_immutable_array_property_is_valid()

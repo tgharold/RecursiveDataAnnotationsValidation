@@ -20,7 +20,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// Where it happens.
     /// - Two properties hold the same array of structs. This is so in 2.3.3 too.
     /// - An item that is a collection returns its structs by enumeration and also through a public
-    ///   property, such as ArraySegment&lt;T&gt;.Array. Since 2.4.0 the validator enumerates an item that
+    ///   property, such as ArraySegment&lt;T&gt;.Array. Since 3.0 the validator enumerates an item that
     ///   is a collection and also walks its properties, so such an item reports each struct twice.
     ///   Before, only the property route found them. A LinkedList&lt;T&gt; item reports each struct three
     ///   times, because its First node also reaches the list through two properties.
@@ -102,7 +102,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             Assert.Equal(ResultText.Expect("First[0].Text" + TextRequired, "Second[0].Text" + TextRequired), errors);
         }
 
-        // New in 2.4.0. 2.3.3 reports only the first path, through the Array property.
+        // New in 3.0. 2.3.3 reports only the first path, through the Array property.
         [Fact]
         public void Struct_in_an_array_segment_item_is_reported_twice()
         {

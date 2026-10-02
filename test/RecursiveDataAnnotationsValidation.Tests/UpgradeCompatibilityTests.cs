@@ -1080,7 +1080,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
             /// <summary>
             /// A struct in a collection is boxed and validated like any object, so its property
-            /// attributes run. A struct held directly in a property is not walked.
+            /// attributes run. A struct that is not a collection, held directly in a property, is not walked.
             /// See: https://learn.microsoft.com/dotnet/csharp/programming-guide/types/boxing-and-unboxing
             /// </summary>
             public struct CheckedPoint

@@ -12,7 +12,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// <summary>
     /// Edge cases of the fix that enumerates an item that is itself a collection (see
     /// OddShapeTests.CollectionsInsideCollections). In 2.3.3 and earlier an item that is a
-    /// collection is validated as an object but never enumerated. Since 2.4.0 it is also
+    /// collection is validated as an object but never enumerated. Since 3.0 it is also
     /// enumerated, and enumerating can do two things that validating the object never did:
     /// it can throw, and it can run for a long time. Each case has the reasoning for the decision.
     ///
@@ -26,7 +26,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
     ///   no spec for it here. A collection item behaves the same as a property after the fix.
     ///
     /// A fix that enumerates items therefore changes what a model can do to the caller. A model
-    /// that passes on 2.3.3 can throw on 2.4, if one of its items is a collection that throws
+    /// that passes on 2.3.3 can throw on 3.0, if one of its items is a collection that throws
     /// when it is enumerated. Only the cases below are realistic. A collection that throws on
     /// enumeration is a broken collection, but a default struct is a common way to get one.
     /// </summary>
@@ -69,9 +69,9 @@ namespace RecursiveDataAnnotationsValidation.Tests
         ///   rule covers both and the caller handles one kind of failure.
         /// - Catching would turn a broken model into "valid" or "invalid", and neither is true. The
         ///   caller could not tell a bad model from a bad collection.
-        /// - The cost is that a model which passes on 2.3.3 can throw on 2.4, because 2.3.3 never
+        /// - The cost is that a model which passes on 2.3.3 can throw on 3.0, because 2.3.3 never
         ///   enumerates the item. This is a rare shape: a collection that throws on enumeration.
-        /// Decision: let it propagate. The changelog entry for 2.4.0 says so.
+        /// Decision: let it propagate. The changelog says so.
         /// </summary>
         public class ItemThatThrowsWhenEnumerated
         {
@@ -165,7 +165,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             }
 
             // Guard. The item that is not default is validated by the spec in OddShapeTests, and a
-            // default array held in a property passes today and must keep passing.
+            // default array held in a property passes and must keep passing.
             // See StructCollectionPropertyTests for a non-default array held in a property.
             [Fact]
             public void Default_immutable_array_in_a_property_is_not_walked()

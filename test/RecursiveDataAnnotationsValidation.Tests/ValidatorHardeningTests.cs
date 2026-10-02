@@ -874,7 +874,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// Fix: skip a collection when every element type it declares is a leaf type: a type
         /// where validating an item can never produce a result. The rule is a set of checks on
         /// the type, not a list of type names, so it also covers types the library cannot name,
-        /// such as DateOnly. TypeExtensionsTests lists the four checks.
+        /// such as DateOnly. TypeExtensionsTests lists the five checks.
         /// The element type comes from the array element type, or from each IEnumerable&lt;T&gt; the
         /// collection implements. A Nullable&lt;T&gt; element is checked as T, because a boxed
         /// Nullable&lt;T&gt; is either null or a boxed T. Each Dictionary item is a KeyValuePair, which

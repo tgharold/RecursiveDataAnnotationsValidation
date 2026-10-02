@@ -81,7 +81,7 @@ namespace RecursiveDataAnnotationsValidation.Extensions
         /// <summary>
         /// True when validating an item of this type can never produce a result. A Nullable&lt;T&gt;
         /// is checked as T. The type must be a value type or a sealed class, so an item cannot be
-        /// a derived type with its own attributes. It must also pass all four checks:
+        /// a derived type with its own attributes. It must also pass all five checks:
         /// 1. No validation attribute on the type.
         /// 2. No validation attribute on any of its properties.
         /// 3. It does not implement IValidatableObject.

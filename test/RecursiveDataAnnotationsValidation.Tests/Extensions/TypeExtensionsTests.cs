@@ -10,13 +10,13 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
     /// <summary>
     /// A leaf type is one where validating an item of that type can never produce a result.
     /// The validator skips a collection whose element types are all leaf types.
-    /// An item can produce a result in only four ways, so a leaf type must pass all four checks:
+    /// An item can produce a result in only five ways, so a leaf type must pass all five checks:
     /// 1. No validation attribute on the type.
     /// 2. No validation attribute on any of its properties.
     /// 3. It does not implement IValidatableObject. Validator calls Validate() on any item
     ///    that implements it.
     /// 4. No property the validator would walk into: a readable, non-indexer property of a
-    ///    reference type other than string.
+    ///    reference type other than string, or of a struct that is a collection of objects.
     /// 5. If it is a collection, it is a collection of leaf types. The validator enumerates an
     ///    item that is a collection, so a sealed class or a struct that yields objects must not
     ///    be skipped. A collection that yields an unknown type, such as a non-generic one, counts
