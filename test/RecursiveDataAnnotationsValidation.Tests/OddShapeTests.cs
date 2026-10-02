@@ -481,6 +481,105 @@ namespace RecursiveDataAnnotationsValidation.Tests
         }
 
         /// <summary>
+        /// Member names that are not plain property names, on an item of a collection.
+        /// - A class-level attribute that passes ValidationContext.MemberName gives a null member
+        ///   name, because no member is being validated. This is the usual way to write one.
+        ///   The same holds for an IValidatableObject that yields a null member name.
+        ///   The validator prefixes the path to each name, and a null name gives "Value[0]." with
+        ///   nothing after the dot. Code that builds the path must not throw on null.
+        /// - A member name that starts with "[", such as "[Totals]", is a name the item chose. It
+        ///   is not the index of a nested collection, so the path keeps the dot: "Value[0].[Totals]".
+        /// The tests also run on 2.3.3, which gives the same paths. Release 2.4.0 first read the
+        /// name to decide whether it was an index, and threw NullReferenceException on null.
+        /// See: https://learn.microsoft.com/dotnet/api/system.componentmodel.dataannotations.validationcontext.membername
+        /// </summary>
+        public class UnusualMemberNames
+        {
+            [AttributeUsage(AttributeTargets.Class)]
+            public class ClassLevelAttribute : ValidationAttribute
+            {
+                protected override ValidationResult IsValid(object value, ValidationContext validationContext) =>
+                    new ValidationResult("The item is not valid.", new[] { validationContext.MemberName });
+            }
+
+            [ClassLevel]
+            public class ClassLevelItem
+            {
+            }
+
+            public class SelfValidatingItem : IValidatableObject
+            {
+                public string MemberName { get; set; }
+
+                public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+                {
+                    yield return new ValidationResult("The item is not valid.", new[] { MemberName });
+                }
+            }
+
+            [Fact]
+            public void Null_member_name_from_a_class_level_attribute_on_an_item()
+            {
+                var (valid, errors) = Run(new Holder<List<ClassLevelItem>> { Value = new List<ClassLevelItem> { new ClassLevelItem() } });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Value[0]. | The item is not valid."), errors);
+            }
+
+            [Fact]
+            public void Null_member_name_from_Validate_on_an_item()
+            {
+                var (valid, errors) = Run(new Holder<List<SelfValidatingItem>> { Value = new List<SelfValidatingItem> { new SelfValidatingItem() } });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Value[0]. | The item is not valid."), errors);
+            }
+
+            // In a nested collection the path has the index of each level, then the empty name.
+            // Nested collections are enumerated from 2.4.0, so 2.3.3 reports nothing here.
+            [Fact]
+            public void Null_member_name_on_an_item_of_a_nested_collection()
+            {
+                var (valid, errors) = Run(new Holder<List<List<ClassLevelItem>>>
+                {
+                    Value = new List<List<ClassLevelItem>> { new List<ClassLevelItem> { new ClassLevelItem() } },
+                });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Value[0][0]. | The item is not valid."), errors);
+            }
+
+            // A name that starts with a bracket on an item of a nested collection is still a name.
+            // The path is the index of each level, a dot, then the name.
+            [Fact]
+            public void Member_name_that_starts_with_a_bracket_on_an_item_of_a_nested_collection()
+            {
+                var (valid, errors) = Run(new Holder<List<List<SelfValidatingItem>>>
+                {
+                    Value = new List<List<SelfValidatingItem>>
+                    {
+                        new List<SelfValidatingItem> { new SelfValidatingItem { MemberName = "[Totals]" } },
+                    },
+                });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Value[0][0].[Totals] | The item is not valid."), errors);
+            }
+
+            [Fact]
+            public void Member_name_that_starts_with_a_bracket_keeps_the_dot()
+            {
+                var (valid, errors) = Run(new Holder<List<SelfValidatingItem>>
+                {
+                    Value = new List<SelfValidatingItem> { new SelfValidatingItem { MemberName = "[Totals]" } },
+                });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Value[0].[Totals] | The item is not valid."), errors);
+            }
+        }
+
+        /// <summary>
         /// A collection as the object passed to the validator. The validator validates that object
         /// and walks its properties, but never enumerates it, because an item is only reached
         /// through a property. So a List that is the root hides its items, and a root array reports
