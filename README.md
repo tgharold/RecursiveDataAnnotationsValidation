@@ -38,12 +38,12 @@ The [`[SkipRecursiveValidation]`](https://github.com/tgharold/RecursiveDataAnnot
 ### Collections
 
 - The items of a collection that a property holds are validated. The error names the property and the index of the item: `Items[1].Name`.
-- An item that is itself a collection is validated too, at each level: `Matrix[0][2].Name`. This holds for lists, arrays, sets, dictionaries and your own collection types. A dictionary is enumerated as `KeyValuePair` items, so its values are reported as `Map[0].Value.Name`.
+- An item that is itself a collection is validated too, at each level: `Matrix[0][2].Name`. This holds for lists, arrays, sets, dictionaries and your own collection types. A dictionary is enumerated as `KeyValuePair` items, so a value that is an object is reported as `Map[0].Value.Name`. A value that is a struct is not walked, because the validator reads only properties of reference types.
 - An item that is a collection is validated as an object first, so its own attributes and `IValidatableObject.Validate` run, then its items.
 - A collection of simple values, such as `List<int>` or `string[]`, is not enumerated, because it cannot hold an invalid object.
 - A collection that you pass to the validator as the root object is not enumerated. Wrap it in an object with a property.
 - A collection that is a struct, such as `ImmutableArray<T>`, is validated when it is an item of another collection, but not when a property holds it. The validator only reads properties of reference types.
-- The validator does not catch exceptions. If a collection throws when it is enumerated, the exception reaches your code. A default `ImmutableArray<T>` item is skipped, because it holds nothing.
+- The validator runs each collection it enumerates, so a lazy sequence, such as a LINQ query or an iterator, runs during validation. A sequence that never ends makes validation hang. The validator does not catch exceptions, so an exception that a collection throws when it is enumerated reaches your code. A default `ImmutableArray<T>` item is skipped, because it holds nothing.
 
 ### Framework types that are not walked
 

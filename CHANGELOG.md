@@ -11,13 +11,16 @@ Breaking changes are marked **BREAKING**.
 ### Fixed
 
 - Objects inside an item that is itself a collection are now validated. Before, a `List<List<T>>`, a `List<HashSet<T>>`, an `object[]` that holds a list, and a list of a sealed or struct collection such as `ImmutableList<T>` passed validation even when an object inside was invalid. The error is reported with the index of each level, for example `Value[0][0].Name`.
-- **BREAKING** for these two cases: the member name changed, because the path used to go through a public property of the inner collection.
-  - An array or an `ArrayList` inside a collection: `Value[0].SyncRoot[0].Name` is now `Value[0][0].Name`.
-  - A dictionary or a `Hashtable` inside a collection: `Value[0].Values[0].Name` is now `Value[0][0].Value.Name`.
+- **BREAKING** for an item that is a collection and has a property that returns its items or an object in them: the member name changed. The validator used to reach such a collection through that property. It now enumerates the items first and reports each at its index. The name of an object in the items is now `Value[0][0].Name`, and each item of a dictionary or a `Hashtable` is a `KeyValuePair` or `DictionaryEntry`. These names changed:
+  - An array, a multi-dimensional array or an `ArrayList` inside a collection: `Value[0].SyncRoot[0].Name` is now `Value[0][0].Name`.
+  - A dictionary or a `Hashtable` inside a collection: `Value[0].Values[0].Name` is now `Value[0][0].Value.Name`, and `Value[0].Keys[0].Name` is now `Value[0][0].Key.Name`.
+  - A `LinkedList<T>`: `Value[0].First.List[1].Name` is now `Value[0][1].Name`. A `SortedSet<T>`: `Value[0].Min.Name` is now `Value[0][0].Name`.
+  - A collection of your own that exposes its items through a property, such as a `List<T>` subclass with a `View` property: `Value[0].View[0].Name` is now `Value[0][0].Name`.
 
   Code that matches these member names must use the new form. A model that passed before can also fail now, if it holds an invalid object in a nested collection.
 - An item that is a collection is still validated as an object first, so its own attributes and `IValidatableObject.Validate` run, as before. Its items are then validated as well.
-- An item that throws when it is enumerated now throws from validation, like a collection that a property holds. A default `ImmutableArray<T>` item is skipped, because it holds nothing and enumerating it throws.
+- An item that is a collection is now enumerated, so a lazy sequence in an item runs, as it does when a property holds it. An item that throws when it is enumerated now throws from validation, and an item that never ends makes validation hang. A default `ImmutableArray<T>` item is skipped, because it holds nothing and enumerating it throws.
+- A deeply nested collection uses more of the stack. On a 1 MB stack, a chain of `List<object>` that holds the next list passes at 1,100 levels and overflows at 1,200, which ends the process (net8.0, macOS, Release). Before, such a list passed without being enumerated. The validator still has no maximum depth.
 - A struct collection such as `ImmutableArray<T>` is validated when it is an item, but not yet when a property holds it. That case is planned for the next release.
 
 ### Changed
