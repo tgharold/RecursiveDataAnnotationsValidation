@@ -16,7 +16,7 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
     /// 3. It does not implement IValidatableObject. Validator calls Validate() on any item
     ///    that implements it.
     /// 4. No property the validator would walk into: a readable, non-indexer property of a
-    ///    reference type other than string, or of a struct that is a collection of objects.
+    ///    reference type other than string, or of a struct that is not a leaf type itself.
     /// 5. If it is a collection, it is a collection of leaf types. The validator enumerates an
     ///    item that is a collection, so a sealed class or a struct that yields objects must not
     ///    be skipped. A collection that yields an unknown type, such as a non-generic one, counts
@@ -207,11 +207,22 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
             public PlainPoint Point { get; set; }
 
             public KeyValuePair<string, Child> Pair { get; set; }
+
+            public PointWithChild WithChild { get; set; }
+
+            public SelfValidatingPoint SelfValidating { get; set; }
+
+            public SelfValidatingPoint? MaybeSelfValidating { get; set; }
+
+            public DateTime When { get; set; }
+
+            public DateTime? MaybeWhen { get; set; }
         }
 
-        // A property of a struct is walked only when the struct is a collection of items that can have
-        // attributes. A struct that is not a collection is not, and neither is a KeyValuePair, which
-        // is not an IEnumerable.
+        // A property of a struct is walked when the struct is not a leaf type: it is a collection of
+        // items that can have attributes, or it has something to validate itself, such as an
+        // IValidatableObject or a property that the validator walks. A KeyValuePair is not an
+        // IEnumerable, but its Value can hold an object.
         [Fact]
         public void Struct_collection_property_is_walked()
         {
@@ -220,10 +231,34 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
         }
 
         [Fact]
-        public void Struct_property_that_is_not_a_collection_is_not_walked()
+        public void Struct_property_with_something_to_validate_is_walked()
+        {
+            Assert.True(typeof(StructBagHolder).GetProperty(nameof(StructBagHolder.Pair)).IsWalked());
+            Assert.True(typeof(StructBagHolder).GetProperty(nameof(StructBagHolder.WithChild)).IsWalked());
+            Assert.True(typeof(StructBagHolder).GetProperty(nameof(StructBagHolder.SelfValidating)).IsWalked());
+            Assert.True(typeof(StructBagHolder).GetProperty(nameof(StructBagHolder.MaybeSelfValidating)).IsWalked());
+        }
+
+        [Fact]
+        public void Struct_property_of_a_leaf_type_is_not_walked()
         {
             Assert.False(typeof(StructBagHolder).GetProperty(nameof(StructBagHolder.Point)).IsWalked());
-            Assert.False(typeof(StructBagHolder).GetProperty(nameof(StructBagHolder.Pair)).IsWalked());
+            Assert.False(typeof(StructBagHolder).GetProperty(nameof(StructBagHolder.When)).IsWalked());
+            Assert.False(typeof(StructBagHolder).GetProperty(nameof(StructBagHolder.MaybeWhen)).IsWalked());
+        }
+
+        // DateTime.Date returns a DateTime. A property that returns its own struct type is not walked,
+        // so DateTime has no walked property and stays a leaf type. Without that rule, deciding
+        // whether DateTime is a leaf type would ask about DateTime again, and the guard against
+        // that answers "not a leaf type". Every DateTime property would then be walked.
+        // See: https://learn.microsoft.com/dotnet/api/system.datetime.date
+        [Fact]
+        public void Struct_property_of_its_own_type_is_not_walked()
+        {
+            Assert.False(typeof(DateTime).GetProperty(nameof(DateTime.Date)).IsWalked());
+            Assert.True(typeof(DateTime).IsLeafType());
+            Assert.True(typeof(DateTimeOffset).IsLeafType());
+            Assert.True(typeof(TimeSpan).IsLeafType());
         }
 
         // Check 4 of IsLeafType uses IsWalked. A type whose only walked member is a struct collection
@@ -325,7 +360,12 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
             Assert.False(new object().IsDefaultStruct());
         }
 
-        // Framework types whose properties throw or never end when walked, and types derived from them.
+        // Framework types whose properties throw, block or never end when walked, and types derived
+        // from them. A null SqlString throws SqlNullValueException from CompareInfo, a GCHandle that
+        // is not allocated throws from Target, and ValueTask<T>.Result waits for a task that has not
+        // finished. Each SqlTypes type implements INullable, so INullable covers all of them.
+        // See: https://learn.microsoft.com/dotnet/api/system.data.sqltypes.inullable
+        // See: https://learn.microsoft.com/dotnet/api/system.threading.tasks.valuetask-1.result
         [Theory]
         [InlineData(typeof(Type))]
         [InlineData(typeof(System.Reflection.MethodInfo))]
@@ -336,9 +376,45 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
         [InlineData(typeof(Uri))]
         [InlineData(typeof(System.IO.DirectoryInfo))]
         [InlineData(typeof(System.IO.FileInfo))]
+        [InlineData(typeof(System.Runtime.InteropServices.GCHandle))]
+        [InlineData(typeof(System.Data.SqlTypes.SqlString))]
+        [InlineData(typeof(System.Data.SqlTypes.SqlDecimal))]
+        [InlineData(typeof(System.Data.SqlTypes.SqlBytes))]
+#if NET8_0_OR_GREATER
+        // ValueTask<T> is not part of .NET Framework 4.8.1 without a package.
+        [InlineData(typeof(System.Threading.Tasks.ValueTask<Child>))]
+#endif
         public void Unsafe_to_walk_type_is_detected(Type type)
         {
             Assert.True(type.IsUnsafeToWalk());
+        }
+
+        // A denied struct has no property left to walk, so it is a leaf type, and a property of
+        // that type is skipped.
+        [Fact]
+        public void Denied_struct_is_a_leaf_type()
+        {
+            Assert.True(typeof(System.Runtime.InteropServices.GCHandle).IsLeafType());
+            Assert.True(typeof(System.Data.SqlTypes.SqlString).IsLeafType());
+#if NET8_0_OR_GREATER
+            Assert.True(typeof(System.Threading.Tasks.ValueTask<Child>).IsLeafType());
+#endif
+        }
+
+        // INullable is denied only for framework types. A type of your own that implements it is
+        // walked like any other.
+        public class UserNullable : System.Data.SqlTypes.INullable
+        {
+            public bool IsNull => false;
+
+            public Child Owner { get; set; }
+        }
+
+        [Fact]
+        public void User_type_that_implements_INullable_is_not_detected()
+        {
+            Assert.False(typeof(UserNullable).IsUnsafeToWalk());
+            Assert.True(typeof(UserNullable).GetProperty(nameof(UserNullable.Owner)).IsWalked());
         }
 
         [Fact]
@@ -358,6 +434,7 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
         [InlineData(typeof(System.IO.Stream))]
         [InlineData(typeof(Exception))]
         [InlineData(typeof(System.Threading.Tasks.Task<Child>))]
+        [InlineData(typeof(System.Threading.CancellationToken))]
         public void Walkable_type_is_not_detected(Type type)
         {
             Assert.False(type.IsUnsafeToWalk());

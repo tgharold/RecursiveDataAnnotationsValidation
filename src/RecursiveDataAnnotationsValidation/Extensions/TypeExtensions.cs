@@ -38,7 +38,7 @@ namespace RecursiveDataAnnotationsValidation.Extensions
         private static readonly ConcurrentDictionary<Type, bool> UnsafeToWalkCache =
             new ConcurrentDictionary<Type, bool>();
 
-        // Framework types whose properties throw, or never end, when the validator walks them.
+        // Framework types whose properties throw, wait, or never end, when the validator walks them.
         // They carry no validation attributes. Only the properties these types and their framework
         // subclasses declare are skipped, so a user subclass still has its own properties walked.
         private static readonly Type[] UnsafeToWalkTypes =
@@ -51,6 +51,15 @@ namespace RecursiveDataAnnotationsValidation.Extensions
             typeof(FileSystemInfo), // DirectoryInfo.Root returns a new DirectoryInfo on each read
             typeof(Thread),         // CurrentCulture and others throw when read from another thread
             typeof(Process),        // StartInfo and others throw for a process this object did not start
+            typeof(System.Runtime.InteropServices.GCHandle), // Target throws when the handle is not allocated
+            typeof(System.Data.SqlTypes.INullable),          // a null SqlString and others throw SqlNullValueException
+        };
+
+        // Generic framework types for the same list that netstandard2.0 cannot name, matched by the
+        // full name of the generic type definition.
+        private static readonly string[] UnsafeToWalkGenericTypeNames =
+        {
+            "System.Threading.Tasks.ValueTask`1", // Result waits for a task that has not finished
         };
 
         // The types IsLeafType is deciding on this thread. A type that yields itself, such as
@@ -122,13 +131,15 @@ namespace RecursiveDataAnnotationsValidation.Extensions
 
         /// <summary>
         /// True for a property the validator walks into: readable, not an indexer, not marked
-        /// [SkipRecursiveValidation], of a reference type other than string or of a struct that is a
-        /// collection of items that can have attributes, and not declared by a framework type whose
-        /// properties are unsafe to read (see <see cref="IsUnsafeToWalk"/>).
+        /// [SkipRecursiveValidation], of a reference type other than string or of a struct that is
+        /// not a leaf type, and not declared by a framework type whose properties are unsafe to read
+        /// (see <see cref="IsUnsafeToWalk"/>). A struct property that returns the struct's own type,
+        /// such as DateTime.Date, is not walked (see <see cref="ReturnsItsOwnStructType"/>).
         /// </summary>
         public static bool IsWalked(this PropertyInfo property)
         {
             return property.PropertyType != typeof(string)
+                && !ReturnsItsOwnStructType(property)
                 && IsWalkedType(property.PropertyType)
                 && property.CanRead
                 && property.GetIndexParameters().Length == 0
@@ -160,16 +171,18 @@ namespace RecursiveDataAnnotationsValidation.Extensions
 
         /// <summary>
         /// True for a framework type whose own properties the validator does not walk, because
-        /// reading them throws or never ends, such as Uri.Segments on a relative Uri. Framework
-        /// types derived from one count too, such as RuntimeType, the type of typeof(...).
-        /// A type outside the System namespaces, such as a user's subclass of Uri, does not count,
-        /// so the properties it adds are walked. See <see cref="UnsafeToWalkTypes"/>.
+        /// reading them throws, waits or never ends, such as Uri.Segments on a relative Uri. Framework
+        /// types derived from one, or that implement one, count too, such as RuntimeType, the type of
+        /// typeof(...), and SqlString, which implements INullable. A type outside the System
+        /// namespaces, such as a user's subclass of Uri, does not count, so the properties it adds are
+        /// walked. See <see cref="UnsafeToWalkTypes"/> and <see cref="UnsafeToWalkGenericTypeNames"/>.
         /// </summary>
         public static bool IsUnsafeToWalk(this Type type)
         {
             return UnsafeToWalkCache.GetOrAdd(type, t =>
                 IsInSystemNamespace(t)
-                && UnsafeToWalkTypes.Any(unsafeType => unsafeType.IsAssignableFrom(t)));
+                && (UnsafeToWalkTypes.Any(unsafeType => unsafeType.IsAssignableFrom(t))
+                    || (t.IsGenericType && UnsafeToWalkGenericTypeNames.Contains(t.GetGenericTypeDefinition().FullName))));
         }
 
         /// <summary>
@@ -193,17 +206,30 @@ namespace RecursiveDataAnnotationsValidation.Extensions
                 && RuntimeHelpers.Equals(obj, DefaultValues.GetOrAdd(type, FormatterServices.GetUninitializedObject));
         }
 
-        // A property of a reference type is walked. A property of a struct is not, because a struct such
-        // as a Point or a Money has nothing to walk into. The exception is a struct that is a collection
-        // of items that can have attributes, such as ImmutableArray<T> of a class, because the same
-        // struct is enumerated when it is an item of another collection, and a model must not pass
-        // because the collection sits one level higher. A Nullable<T> is checked as T.
+        // A property of a reference type is walked. A property of a struct is walked when the struct
+        // is not a leaf type: it has a validation attribute, implements IValidatableObject, has a
+        // property the validator walks, such as KeyValuePair.Value, or is a collection of items that
+        // can have attributes, such as ImmutableArray<T> of a class. The same struct is validated when
+        // it is an item of a collection, and a model must not pass because the struct sits in a
+        // property instead. A struct with nothing to validate, such as an int or a DateTime, is a leaf
+        // type and is skipped. A Nullable<T> is checked as T.
         private static bool IsWalkedType(Type type)
         {
             type = Nullable.GetUnderlyingType(type) ?? type;
 
-            return !type.IsValueType
-                || (typeof(IEnumerable).IsAssignableFrom(type) && !type.IsCollectionOfLeafType());
+            return !type.IsValueType || !type.IsLeafType();
+        }
+
+        // True for a property of a struct that returns that same struct type, or a Nullable of it,
+        // such as DateTime.Date. Each read returns a new copy, which the walk cannot match by
+        // reference, so walking it would not end on its own. It also keeps a struct such as DateTime
+        // a leaf type: deciding that would otherwise ask about DateTime while DateTime is being
+        // decided, and that guard answers "not a leaf type" (see IsLeafType).
+        private static bool ReturnsItsOwnStructType(PropertyInfo property)
+        {
+            var type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+
+            return type.IsValueType && type == property.DeclaringType;
         }
 
         private static bool IsInSystemNamespace(Type type)

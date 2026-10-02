@@ -19,11 +19,14 @@ namespace RecursiveDataAnnotationsValidation.Tests
     ///
     /// Where it happens.
     /// - Two properties hold the same array of structs. This is so in 2.3.3 too.
+    /// - Two properties return the same struct, such as a property and a computed copy of it.
+    ///   Since 3.0 the validator walks a struct property that has something to validate.
     /// - An item that is a collection returns its structs by enumeration and also through a public
     ///   property, such as ArraySegment&lt;T&gt;.Array. Since 3.0 the validator enumerates an item that
     ///   is a collection and also walks its properties, so such an item reports each struct twice.
-    ///   Before, only the property route found them. A LinkedList&lt;T&gt; item reports each struct three
-    ///   times, because its First node also reaches the list through two properties.
+    ///   Before, only the property route found them. A LinkedList&lt;T&gt; item reports each struct four
+    ///   times, because its First node also reaches the list through its List property, and the
+    ///   struct through its Value and ValueRef properties.
     /// See: https://learn.microsoft.com/dotnet/api/system.arraysegment-1.array
     ///
     /// What it is not. The invalid struct is reported, so no model passes that failed before. The
@@ -68,6 +71,13 @@ namespace RecursiveDataAnnotationsValidation.Tests
             public List<Leaf> Second { get; set; }
         }
 
+        public class LineAndCopy
+        {
+            public Line Line { get; set; }
+
+            public Line Copy => Line;
+        }
+
         private const string TextRequired = " | The Text field is required.";
 
         private static (bool Valid, List<string> Errors) Run(object model)
@@ -100,6 +110,17 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
             Assert.False(valid);
             Assert.Equal(ResultText.Expect("First[0].Text" + TextRequired, "Second[0].Text" + TextRequired), errors);
+        }
+
+        // New in 3.0. 2.3.3 did not walk a struct property, so it reported nothing. Each read of
+        // a struct property returns a copy, so Line and Copy are two structs to the validator.
+        [Fact]
+        public void Struct_returned_by_two_properties_is_reported_twice()
+        {
+            var (valid, errors) = Run(new LineAndCopy { Line = new Line() });
+
+            Assert.False(valid);
+            Assert.Equal(ResultText.Expect("Line.Text" + TextRequired, "Copy.Text" + TextRequired), errors);
         }
 
         // New in 3.0. 2.3.3 reports only the first path, through the Array property.
@@ -143,10 +164,10 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
 #if NET8_0_OR_GREATER
         // LinkedListNode.ValueRef is new in .NET 6, so this shape is not the same on .NET Framework.
-        // First reaches the list through its List property, and the node through ValueRef.
+        // First reaches the list through its List property, and the struct through Value and ValueRef.
         // See: https://learn.microsoft.com/dotnet/api/system.collections.generic.linkedlistnode-1.valueref
         [Fact]
-        public void Struct_in_a_linked_list_item_is_reported_three_times()
+        public void Struct_in_a_linked_list_item_is_reported_four_times()
         {
             var list = new LinkedList<Line>(new[] { new Line() });
 
@@ -156,6 +177,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             Assert.Equal(
                 ResultText.Expect(
                     "Value[0].First.List[0].Text" + TextRequired,
+                    "Value[0].First.Value.Text" + TextRequired,
                     "Value[0].First.ValueRef.Text" + TextRequired,
                     "Value[0][0].Text" + TextRequired),
                 errors);

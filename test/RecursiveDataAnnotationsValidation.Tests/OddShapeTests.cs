@@ -18,9 +18,11 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// <summary>
     /// Object shapes that are unusual, made up or taken from real framework types, to see what the
     /// validator does with them. The rule that the validator walks into every public property of a
-    /// reference type, and enumerates every IEnumerable it finds in one, explains all results.
+    /// reference type, or of a struct that has something to validate, and enumerates every
+    /// IEnumerable it finds in one, explains all results.
     /// A property is walked when it is readable, not an indexer, not marked
-    /// [SkipRecursiveValidation], and of a reference type other than string. See IsWalked.
+    /// [SkipRecursiveValidation], and of a reference type other than string, or of a struct that is
+    /// not a leaf type. See IsWalked.
     /// Each test is one of:
     /// - A guard. It passes today and keeps a behavior that callers may rely on.
     /// - A limitation guard. It passes today and shows a shape that is silently not validated.
@@ -28,8 +30,9 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// - An open test. It is skipped and states the behavior a fix would give.
     /// - A spec. It is not skipped and fails until the fix lands. It states the behavior the fix gives.
     /// Every result below is the same on release 2.2.0 and on the current code, except the
-    /// framework types in MembersThatThrow, which are no longer walked, and the collections in
-    /// CollectionsInsideCollections and CollectionAsRootObject, which 3.0 enumerates.
+    /// framework types in MembersThatThrow, which are no longer walked, the collections in
+    /// CollectionsInsideCollections and CollectionAsRootObject, which 3.0 enumerates, and the
+    /// struct properties in StructProperties, which 3.0 walks.
     /// Not covered here, because it stops the test run: a Task that has not completed makes the
     /// walk read Task.Result, which waits forever. The open decision, with skipped specs, is in
     /// TaskPropertyTests.
@@ -78,8 +81,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// A dictionary item is enumerated as KeyValuePair items, so a List of Dictionary reports
         /// "Value[0][0].Value.Name", the same member names as a dictionary held in a property.
         /// A collection of a struct type, such as ImmutableArray or a readonly struct that implements
-        /// IEnumerable, is enumerated like any other. The validator does not walk into a struct
-        /// that is held in a property, but an item that hides objects must not pass.
+        /// IEnumerable, is enumerated like any other, so an item that hides objects does not pass.
         /// See: https://learn.microsoft.com/dotnet/api/system.array.syncroot
         /// </summary>
         public class CollectionsInsideCollections
@@ -302,15 +304,15 @@ namespace RecursiveDataAnnotationsValidation.Tests
             }
 #endif
 
-            // StructsAreNotWalked.LeafBag is a readonly struct that implements IEnumerable of Leaf.
+            // StructProperties.LeafBag is a readonly struct that implements IEnumerable of Leaf.
             // A boxed struct is not a sealed class, but IsLeafType treats both the same way, so this
             // is the struct form of the SealedBag gap above.
             [Fact]
             public void List_of_struct_collections_is_validated()
             {
-                var (valid, errors) = Run(new Holder<List<StructsAreNotWalked.LeafBag>>
+                var (valid, errors) = Run(new Holder<List<StructProperties.LeafBag>>
                 {
-                    Value = new List<StructsAreNotWalked.LeafBag> { new StructsAreNotWalked.LeafBag(new Leaf()) },
+                    Value = new List<StructProperties.LeafBag> { new StructProperties.LeafBag(new Leaf()) },
                 });
 
                 Assert.False(valid);
@@ -322,7 +324,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             {
                 var (valid, errors) = Run(new Holder<object[]>
                 {
-                    Value = new object[] { new StructsAreNotWalked.LeafBag(new Leaf()) },
+                    Value = new object[] { new StructProperties.LeafBag(new Leaf()) },
                 });
 
                 Assert.False(valid);
@@ -767,17 +769,24 @@ namespace RecursiveDataAnnotationsValidation.Tests
         }
 
         /// <summary>
-        /// Structs. The validator walks into properties of reference types only, so a struct
-        /// property is checked for its own validation attributes by Validator when the parent is
-        /// validated, but nothing inside the struct is walked. A property of the struct that
-        /// carries an attribute is never checked. The exception is a struct that is a collection,
-        /// such as ImmutableArray&lt;T&gt;: its items are validated, as an item of another collection
-        /// and as a property (see StructCollectionPropertyTests).
-        /// These are limitation guards. Record structs with positional `[property: ...]`
-        /// attributes are a modern way to model a value, so this one may surprise callers.
+        /// Structs. A struct property is walked when the struct has something to validate: a
+        /// validation attribute on the struct or on one of its properties, IValidatableObject, or a
+        /// property that the validator walks, such as the Value of a KeyValuePair&lt;string, Leaf&gt;.
+        /// A struct with nothing to validate, such as an int, a Guid or a DateTime, is a leaf type
+        /// and is skipped (see IsLeafType). Up to 2.3.3, only a struct that is a collection was
+        /// walked as a property, so an invalid struct in a property passed, although the same
+        /// struct was validated as an item of a list.
+        /// A struct is copied each time it is read, and the walk boxes the copy, so the walk cannot
+        /// tell that two reads give the same struct. A property that returns its own struct type,
+        /// such as DateTime.Date, is therefore not walked: each read is a new struct, and the walk
+        /// would not end on its own.
+        /// A value tuple such as (Leaf, int) keeps its items in the fields Item1 and Item2, not in
+        /// properties. Validator reads properties only, so the items of a value tuple are not walked.
         /// See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/struct
+        /// See: https://learn.microsoft.com/dotnet/csharp/programming-guide/types/boxing-and-unboxing
+        /// See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/value-tuples
         /// </summary>
-        public class StructsAreNotWalked
+        public class StructProperties
         {
             public struct Money
             {
@@ -801,28 +810,115 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
             }
 
+            // No attribute of its own. It holds an object of a class.
+            public struct Wrapper
+            {
+                public Leaf Inner { get; set; }
+            }
+
+            // Next returns its own struct type, as DateTime.Date does. Each read is a new struct
+            // with a Count that is out of range.
+            public struct Counter
+            {
+                [Range(1, 10)]
+                public int Count { get; set; }
+
+                public Counter Next => new Counter { Count = Count + 100 };
+            }
+
+            private const string AmountOutOfRange = " | The field Amount must be between 1 and 10.";
+
+            // Spec. Up to 2.3.3 this passed.
             [Fact]
-            public void Struct_property_with_an_attribute_is_not_validated()
+            public void Struct_property_with_an_attribute_is_validated()
             {
                 var (valid, errors) = Run(new Holder<Money> { Value = new Money { Amount = 99 } });
 
-                Assert.True(valid);
-                Assert.Empty(errors);
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Value.Amount" + AmountOutOfRange), errors);
             }
 
+            // Spec. A Nullable<Money> that has a value is boxed as a Money, so it is walked the same way.
+            // See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/nullable-value-types#boxing-and-unboxing
             [Fact]
-            public void Nullable_struct_property_with_an_attribute_is_not_validated()
+            public void Nullable_struct_property_with_an_attribute_is_validated()
             {
                 var (valid, errors) = Run(new Holder<Money?> { Value = new Money { Amount = 99 } });
 
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Value.Amount" + AmountOutOfRange), errors);
+            }
+
+            // Spec. Record structs with positional `[property: ...]` attributes are a modern way to
+            // model a value.
+            [Fact]
+            public void Record_struct_property_with_an_attribute_is_validated()
+            {
+                var (valid, errors) = Run(new Holder<Coordinates> { Value = new Coordinates(200) });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Value.Latitude | The field Latitude must be between -90 and 90."), errors);
+            }
+
+            // Spec. A struct is not skipped because it is its default value, unlike a struct
+            // collection that nobody set. A default Money has an Amount of 0, which is out of range.
+            [Fact]
+            public void Default_struct_property_is_validated()
+            {
+                var (valid, errors) = Run(new Holder<Money>());
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Value.Amount" + AmountOutOfRange), errors);
+            }
+
+            // Spec. A dictionary item is a KeyValuePair and was already walked. A KeyValuePair
+            // property now is too.
+            [Fact]
+            public void KeyValuePair_property_is_walked()
+            {
+                var (valid, errors) = Run(new Holder<KeyValuePair<string, Leaf>>
+                {
+                    Value = new KeyValuePair<string, Leaf>("a", new Leaf())
+                });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Value.Value.Name" + NameRequired), errors);
+            }
+
+            // Spec.
+            [Fact]
+            public void Struct_that_holds_an_object_is_walked()
+            {
+                var (valid, errors) = Run(new Holder<Wrapper> { Value = new Wrapper { Inner = new Leaf() } });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Value.Inner.Name" + NameRequired), errors);
+            }
+
+            // Guard.
+            [Fact]
+            public void Valid_struct_properties_pass()
+            {
+                Assert.True(Run(new Holder<Money> { Value = new Money { Amount = 5 } }).Valid);
+                Assert.True(Run(new Holder<Wrapper> { Value = new Wrapper { Inner = new Leaf { Name = "ok" } } }).Valid);
+                Assert.True(Run(new Holder<Wrapper>()).Valid);
+            }
+
+            // Guard. Next is not walked, so its Count of 101 is not reported. Count itself is checked.
+            [Fact]
+            public void Struct_property_of_its_own_type_is_not_walked()
+            {
+                var (valid, errors) = Run(new Holder<Counter> { Value = new Counter { Count = 1 } });
+
                 Assert.True(valid);
                 Assert.Empty(errors);
             }
 
+            // Limitation guard. Item1 is a field, so the invalid Leaf in it is not reached.
             [Fact]
-            public void Record_struct_property_with_an_attribute_is_not_validated()
+            public void Value_tuple_items_are_not_walked()
             {
-                var (valid, errors) = Run(new Holder<Coordinates> { Value = new Coordinates(200) });
+                var (valid, errors) = Run(new Holder<(Leaf, int)> { Value = (new Leaf(), 1) });
 
                 Assert.True(valid);
                 Assert.Empty(errors);

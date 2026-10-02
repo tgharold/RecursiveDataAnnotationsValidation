@@ -32,6 +32,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// - A null object or context, and a property hidden with `new` (fixed in 2.2.4).
     /// - The order of the results, and the path of an object that two routes reach, which 3.0
     ///   changed with its breadth-first walk (BreadthFirstWalkTests).
+    /// - A struct held in a property, which 3.0 walks (OddShapeTests.StructProperties).
     ///
     /// The messages are the framework's default English messages, or a custom ErrorMessage where
     /// .NET Framework and .NET might word a default differently.
@@ -1044,7 +1045,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
             /// <summary>
             /// A struct in a collection is boxed and validated like any object, so its property
-            /// attributes run. A struct that is not a collection, held directly in a property, is not walked.
+            /// attributes run. A struct held directly in a property is walked by 3.0 only, so it is
+            /// not here (see OddShapeTests.StructProperties).
             /// See: https://learn.microsoft.com/dotnet/csharp/programming-guide/types/boxing-and-unboxing
             /// </summary>
             public struct CheckedPoint
@@ -1056,8 +1058,6 @@ namespace RecursiveDataAnnotationsValidation.Tests
             public class CheckedPoints
             {
                 public List<CheckedPoint> Points { get; set; }
-
-                public CheckedPoint Single { get; set; }
             }
 
             [Fact]
@@ -1066,7 +1066,6 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 var points = new CheckedPoints
                 {
                     Points = new List<CheckedPoint> { new CheckedPoint { X = 1 }, new CheckedPoint { X = 11 } },
-                    Single = new CheckedPoint { X = 99 },
                 };
 
                 Assert.False(Validate(points, out var results));
