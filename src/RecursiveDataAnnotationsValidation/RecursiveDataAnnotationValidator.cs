@@ -220,12 +220,12 @@ namespace RecursiveDataAnnotationsValidation
             //collection also returns from a property, such as Array.SyncRoot, is then reported at its
             //index (Value[0][0]) and not through the property (Value[0].SyncRoot[0]).
             //A collection of leaf types is skipped, like a collection that a property holds. A default
-            //ImmutableArray is skipped, because enumerating it throws and it holds nothing.
+            //struct, such as an ImmutableArray nobody set, is skipped: it holds nothing and enumerating it throws.
             var enumeratedItems = false;
             if (enumerateItems
                 && obj is IEnumerable items
                 && !type.IsCollectionOfLeafType()
-                && !obj.IsDefaultImmutableArray())
+                && !obj.IsDefaultStruct())
             {
                 enumeratedItems = true;
                 if (!TryValidateItems(

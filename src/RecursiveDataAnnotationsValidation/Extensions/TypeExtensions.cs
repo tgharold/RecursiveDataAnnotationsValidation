@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Serialization;
 using System.Threading;
 using RecursiveDataAnnotationsValidation.Attributes;
 
@@ -26,6 +27,12 @@ namespace RecursiveDataAnnotationsValidation.Extensions
 
         private static readonly ConcurrentDictionary<Type, bool> OverridesEqualsCache =
             new ConcurrentDictionary<Type, bool>();
+
+        // A boxed default(T) for each struct type. GetUninitializedObject returns zeroed memory, so
+        // it is default(T) even for a struct that declares a parameterless constructor, which
+        // Activator.CreateInstance would run.
+        private static readonly ConcurrentDictionary<Type, object> DefaultValues =
+            new ConcurrentDictionary<Type, object>();
 
         private static readonly ConcurrentDictionary<Type, bool> UnsafeToWalkCache =
             new ConcurrentDictionary<Type, bool>();
@@ -153,21 +160,21 @@ namespace RecursiveDataAnnotationsValidation.Extensions
         }
 
         /// <summary>
-        /// True for a default ImmutableArray, such as an array field that nobody set. It wraps null,
-        /// so enumerating it throws InvalidOperationException, and it holds nothing to validate.
-        /// The type is found by name, because the library does not reference System.Collections.Immutable.
+        /// True for a struct that equals its default value, such as an ImmutableArray or an
+        /// ArraySegment that nobody set, or a struct of your own whose fields are all null or zero.
+        /// A default struct collection usually holds nothing to validate, and enumerating one throws:
+        /// InvalidOperationException for these two framework types, NullReferenceException for a
+        /// struct that wraps an array. The validator skips it, so a model that has an unset struct
+        /// field does not start to throw. Equality is the struct's own Equals.
         /// </summary>
-        public static bool IsDefaultImmutableArray(this object obj)
+        public static bool IsDefaultStruct(this object obj)
         {
             var type = obj.GetType();
 
-            return type.IsValueType
-                && type.IsGenericType
-                && type.GetGenericTypeDefinition().FullName == "System.Collections.Immutable.ImmutableArray`1"
-                && (bool)type.GetProperty("IsDefault").GetValue(obj, null);
+            return type.IsValueType && obj.Equals(DefaultValues.GetOrAdd(type, FormatterServices.GetUninitializedObject));
         }
 
-        private static bool IsInSystemNamespace(Type type)
+                private static bool IsInSystemNamespace(Type type)
         {
             var ns = type.Namespace;
             return ns != null && (ns == "System" || ns.StartsWith("System.", StringComparison.Ordinal));

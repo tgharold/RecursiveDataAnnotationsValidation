@@ -39,8 +39,9 @@ namespace RecursiveDataAnnotationsValidation.Tests
     ///   collection, such as a Money, is still skipped.
     /// - The walk reads the value, which is boxed, and enumerates it like any other collection.
     ///   The path is the same as for a collection that is a class: Value[0].Name.
-    /// - A default ImmutableArray in a property is skipped, as an item is (see
-    ///   NestedCollectionEdgeCaseTests). It passes today, so enumerating it would add a crash.
+    /// - A struct in a property that equals its default value, such as a default ImmutableArray or
+    ///   ArraySegment, is skipped, as an item is (see NestedCollectionEdgeCaseTests, Case 2). It
+    ///   passes today, so enumerating it would add a crash.
     /// - A struct collection that throws when enumerated throws from the property too, like an
     ///   item and like a class. This is a change for the few models that hold one.
     /// - Check 4 of IsLeafType uses IsWalked, so a struct with such a property is no longer a

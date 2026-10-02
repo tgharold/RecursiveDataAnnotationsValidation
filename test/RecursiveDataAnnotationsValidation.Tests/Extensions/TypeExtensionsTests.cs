@@ -198,29 +198,48 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
             Assert.True(typeof(string).IsLeafType());
         }
 
+        // A default struct collection holds nothing, and enumerating one throws, so the validator skips it.
+        // The check is the struct's own Equals against default(T), so it needs no list of types.
+        [Fact]
+        public void Default_struct_is_detected()
+        {
+            Assert.True(((object)default(ArraySegment<Child>)).IsDefaultStruct());
+            Assert.True(((object)default(PlainPoint)).IsDefaultStruct());
+            Assert.True(((object)default(int)).IsDefaultStruct());
+        }
+
 #if NET8_0_OR_GREATER
-        // The library does not reference System.Collections.Immutable, so it finds the type by name.
+        // System.Collections.Immutable is not part of net481.
         [Fact]
         public void Default_immutable_array_is_detected()
         {
-            Assert.True(((object)default(System.Collections.Immutable.ImmutableArray<Child>)).IsDefaultImmutableArray());
+            Assert.True(((object)default(System.Collections.Immutable.ImmutableArray<Child>)).IsDefaultStruct());
         }
 
         [Fact]
         public void Immutable_array_that_has_a_value_is_not_detected()
         {
-            Assert.False(((object)System.Collections.Immutable.ImmutableArray.Create(new Child())).IsDefaultImmutableArray());
-            Assert.False(((object)System.Collections.Immutable.ImmutableArray<Child>.Empty).IsDefaultImmutableArray());
+            Assert.False(((object)System.Collections.Immutable.ImmutableArray.Create(new Child())).IsDefaultStruct());
+            Assert.False(((object)System.Collections.Immutable.ImmutableArray<Child>.Empty).IsDefaultStruct());
+        }
+#endif
+
+        [Fact]
+        public void Struct_that_has_a_value_is_not_detected()
+        {
+            Assert.False(((object)new ArraySegment<Child>(new[] { new Child() })).IsDefaultStruct());
+            Assert.False(((object)new ArraySegment<Child>(new Child[0])).IsDefaultStruct());
+            Assert.False(((object)new PlainPoint { X = 1 }).IsDefaultStruct());
+            Assert.False(((object)5).IsDefaultStruct());
         }
 
         [Fact]
-        public void Other_objects_are_not_a_default_immutable_array()
+        public void Object_of_a_class_is_not_a_default_struct()
         {
-            Assert.False(new List<Child>().IsDefaultImmutableArray());
-            Assert.False(((object)default(int)).IsDefaultImmutableArray());
-            Assert.False("text".IsDefaultImmutableArray());
+            Assert.False(new List<Child>().IsDefaultStruct());
+            Assert.False("text".IsDefaultStruct());
+            Assert.False(new object().IsDefaultStruct());
         }
-#endif
 
         // Framework types whose properties throw or never end when walked, and types derived from them.
         [Theory]

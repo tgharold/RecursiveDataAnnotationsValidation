@@ -93,29 +93,54 @@ namespace RecursiveDataAnnotationsValidation.Tests
             }
         }
 
-#if NET8_0_OR_GREATER
         /// <summary>
-        /// Case 2: an item that is a default ImmutableArray.
-        /// An ImmutableArray is a struct that wraps an array. default(ImmutableArray) wraps null,
-        /// and enumerating it throws InvalidOperationException. A model gets one by accident: a
-        /// field that nobody set, a deserializer that skipped a missing JSON property, or a
-        /// constructor that left it out. It is the common way to meet a collection that throws.
+        /// Case 2: an item that is a default struct collection.
+        /// A struct collection that nobody set equals default(T), and enumerating it throws:
+        /// - default(ImmutableArray) wraps null and throws InvalidOperationException.
+        /// - default(ArraySegment) has a null Array and throws InvalidOperationException.
+        /// - A struct of your own that wraps an array throws NullReferenceException.
+        /// A model gets one by accident: a field that nobody set, a deserializer that skipped a
+        /// missing JSON property, or a constructor that left it out.
         /// See: https://learn.microsoft.com/dotnet/api/system.collections.immutable.immutablearray-1.isdefault
+        /// See: https://learn.microsoft.com/dotnet/api/system.arraysegment-1.array
+        /// A struct collection of simple values, such as ArraySegment of byte, is never enumerated,
+        /// so only a collection of objects can throw.
         /// Reasoning:
-        /// - A default array holds no objects, so "valid" is the correct answer, and the answer on
+        /// - A default struct holds no objects, so "valid" is the correct answer, and the answer on
         ///   2.3.3. A fix that makes it throw turns a passing model into a crash for a reason the
         ///   caller did not cause and cannot see in the model.
-        /// - The same array held in a property is not walked at all (StructsAreNotWalked), so it
+        /// - The same struct held in a property is not walked at all (StructsAreNotWalked), so it
         ///   passes today and after the fix. Only an item would throw. That difference is a trap.
-        /// - The fix can skip a value that is a default ImmutableArray. It checks IsDefault, which
-        ///   needs the type, so this is a special case for one framework type. No other
-        ///   framework collection is known to throw when it is default. Other struct collections are
-        ///   the caller's own types, and Case 1 covers them.
-        /// Decision: skip a default ImmutableArray, and validate a non-default one. The alternative
-        /// was Case 1 for this type too. It is less work, and it breaks models.
+        /// Options that were weighed:
+        /// - A. Skip a default ImmutableArray only. It leaves ArraySegment and the caller's own
+        ///   structs to throw.
+        /// - B. Skip any struct item that equals default(T). It covers all of them, and needs no
+        ///   list of types and no reference to System.Collections.Immutable.
+        ///   The cost is a struct whose default value really yields objects. That is skipped, and
+        ///   it was not validated before either.
+        /// - C. Skip ArraySegment too. That is a list that grows with each framework type.
+        /// - D. Catch the exception and treat the item as empty. It hides a bug in a collection of
+        ///   the caller's own, and the validator catches nothing else.
+        /// Decision: B.
         /// </summary>
-        public class DefaultImmutableArrayItem
+        public class DefaultStructCollectionItem
         {
+            /// <summary>A struct collection that wraps an array. Its default value wraps null.</summary>
+            public readonly struct LeafBag : IEnumerable<Leaf>
+            {
+                private readonly Leaf[] _items;
+
+                public LeafBag(params Leaf[] items)
+                {
+                    _items = items;
+                }
+
+                public IEnumerator<Leaf> GetEnumerator() => ((IEnumerable<Leaf>)_items).GetEnumerator();
+
+                IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+            }
+
+#if NET8_0_OR_GREATER
             [Fact]
             public void Default_immutable_array_item_is_treated_as_empty()
             {
@@ -149,7 +174,72 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.True(valid);
                 Assert.Empty(errors);
             }
-        }
 #endif
+
+            [Fact]
+            public void Default_array_segment_item_is_treated_as_empty()
+            {
+                var (valid, errors) = Run(new Holder<List<ArraySegment<Leaf>>>
+                {
+                    Value = new List<ArraySegment<Leaf>> { default },
+                });
+
+                Assert.True(valid);
+                Assert.Empty(errors);
+            }
+
+            [Fact]
+            public void Default_array_segment_in_an_object_array_is_treated_as_empty()
+            {
+                var (valid, errors) = Run(new Holder<object[]> { Value = new object[] { default(ArraySegment<Leaf>) } });
+
+                Assert.True(valid);
+                Assert.Empty(errors);
+            }
+
+            [Fact]
+            public void Default_struct_collection_of_your_own_is_treated_as_empty()
+            {
+                var (valid, errors) = Run(new Holder<List<LeafBag>> { Value = new List<LeafBag> { default } });
+
+                Assert.True(valid);
+                Assert.Empty(errors);
+            }
+
+            // Guard. The segment is not default, so it is enumerated, and the invalid object is found.
+            [Fact]
+            public void Array_segment_that_has_an_array_is_validated()
+            {
+                var segment = new ArraySegment<Leaf>(new[] { new Leaf() });
+
+                var (valid, errors) = Run(new Holder<List<ArraySegment<Leaf>>> { Value = new List<ArraySegment<Leaf>> { segment } });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Value[0][0].Name | The Name field is required."), errors);
+            }
+
+            // Guard. An empty segment is not default. It has an array, so it is enumerated and holds nothing.
+            [Fact]
+            public void Empty_array_segment_is_valid()
+            {
+                var (valid, errors) = Run(new Holder<List<ArraySegment<Leaf>>>
+                {
+                    Value = new List<ArraySegment<Leaf>> { new ArraySegment<Leaf>(new Leaf[0]) },
+                });
+
+                Assert.True(valid);
+                Assert.Empty(errors);
+            }
+
+            // Guard. A segment of simple values is never enumerated, so a default one cannot throw.
+            [Fact]
+            public void Default_array_segment_of_bytes_is_valid()
+            {
+                var (valid, errors) = Run(new Holder<List<ArraySegment<byte>>> { Value = new List<ArraySegment<byte>> { default } });
+
+                Assert.True(valid);
+                Assert.Empty(errors);
+            }
+        }
     }
 }
