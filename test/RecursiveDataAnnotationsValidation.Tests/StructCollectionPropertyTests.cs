@@ -5,13 +5,14 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 #endif
 using System.ComponentModel.DataAnnotations;
+using RecursiveDataAnnotationsValidation.Attributes;
 using Xunit;
 
 namespace RecursiveDataAnnotationsValidation.Tests
 {
     /// <summary>
-    /// A collection that is a struct, held in a property. Not fixed in 2.4.0. The specs here are
-    /// skipped and describe the behavior planned for the next release.
+    /// A collection that is a struct, held in a property. The specs here describe the planned
+    /// behavior. The guards that pin today's gap pass until the fix lands, and the specs fail until then.
     ///
     /// The inconsistency. The validator walks only the properties of a reference type (see
     /// IsWalked), so a property whose type is a struct is never read. That includes a struct
@@ -58,8 +59,6 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// </summary>
     public class StructCollectionPropertyTests
     {
-        private const string Reason = "Next release. A struct collection held in a property is not enumerated yet.";
-
         public class Leaf
         {
             [Required]
@@ -121,8 +120,17 @@ namespace RecursiveDataAnnotationsValidation.Tests
             public int Enumerations { get; set; }
         }
 
+        // The field makes a value that is not default(ThrowingStructBag). A struct with no fields
+        // always equals its default, and the validator skips a default struct (see IsDefaultStruct).
         public readonly struct ThrowingStructBag : IEnumerable<Leaf>
         {
+            private readonly int _marker;
+
+            public ThrowingStructBag(int marker)
+            {
+                _marker = marker;
+            }
+
             public IEnumerator<Leaf> GetEnumerator() => throw new InvalidOperationException("enumeration failed");
 
             IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
@@ -144,7 +152,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             Assert.Empty(asProperty.Errors);
         }
 
-        [Fact(Skip = Reason)]
+        [Fact]
         public void Struct_collection_property_is_validated()
         {
             var (valid, errors) = Run(new Holder<LeafBag> { Value = new LeafBag(new Leaf()) });
@@ -155,7 +163,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
         // A nullable struct is boxed as the struct itself when it has a value.
         // See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/nullable-value-types#boxing-and-unboxing
-        [Fact(Skip = Reason)]
+        [Fact]
         public void Nullable_struct_collection_property_is_validated()
         {
             var (valid, errors) = Run(new Holder<LeafBag?> { Value = new LeafBag(new Leaf()) });
@@ -173,7 +181,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             Assert.Empty(errors);
         }
 
-        [Fact(Skip = Reason)]
+        [Fact]
         public void Struct_collection_property_below_a_class_property_is_validated()
         {
             var (valid, errors) = Run(new Holder<Holder<LeafBag>>
@@ -185,7 +193,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             Assert.Equal(ResultText.Expect("Value.Value[0].Name" + NameRequired), errors);
         }
 
-        [Fact(Skip = Reason)]
+        [Fact]
         public void Struct_collection_property_in_an_item_is_validated()
         {
             var (valid, errors) = Run(new Holder<List<Holder<LeafBag>>>
@@ -198,7 +206,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
         }
 
         // The error of each object is reported once, and the valid ones are not reported.
-        [Fact(Skip = Reason)]
+        [Fact]
         public void Only_the_invalid_items_of_a_struct_collection_property_are_reported()
         {
             var (valid, errors) = Run(new Holder<LeafBag>
@@ -208,6 +216,44 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
             Assert.False(valid);
             Assert.Equal(ResultText.Expect("Value[2].Name" + NameRequired), errors);
+        }
+
+        public class TwoBags
+        {
+            public LeafBag First { get; set; }
+
+            public LeafBag Second { get; set; }
+        }
+
+        public class SkippedBag
+        {
+            [SkipRecursiveValidation]
+            public LeafBag Value { get; set; }
+        }
+
+        // The items of a struct collection are objects of a class, so the reference check applies to
+        // them as to any other object: one that two properties share is validated, and reported, once.
+        // Only an item that is itself a struct is reported once for each route (see
+        // StructItemsReportedTwiceTests).
+        [Fact]
+        public void Object_shared_by_two_struct_collection_properties_is_reported_once()
+        {
+            var shared = new Leaf();
+
+            var (valid, errors) = Run(new TwoBags { First = new LeafBag(shared), Second = new LeafBag(shared) });
+
+            Assert.False(valid);
+            Assert.Equal(ResultText.Expect("First[0].Name" + NameRequired), errors);
+        }
+
+        // The opt-out works for a struct collection as for any other property.
+        [Fact]
+        public void Struct_collection_property_marked_to_skip_is_not_enumerated()
+        {
+            var (valid, errors) = Run(new SkippedBag { Value = new LeafBag(new Leaf()) });
+
+            Assert.True(valid);
+            Assert.Empty(errors);
         }
 
         // Guard. A struct collection of leaf types has nothing to validate, like a List of int, so
@@ -226,10 +272,10 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
         // A struct collection that throws when it is enumerated throws from a property, like an
         // item (NestedCollectionEdgeCaseTests, Case 1). It passes today, because it is not read.
-        [Fact(Skip = Reason)]
+        [Fact]
         public void Struct_collection_property_that_throws_when_enumerated_propagates()
         {
-            var ex = Record.Exception(() => Run(new Holder<ThrowingStructBag> { Value = new ThrowingStructBag() }));
+            var ex = Record.Exception(() => Run(new Holder<ThrowingStructBag> { Value = new ThrowingStructBag(1) }));
 
             Assert.IsType<InvalidOperationException>(ex);
         }
@@ -237,14 +283,14 @@ namespace RecursiveDataAnnotationsValidation.Tests
         [Fact]
         public void Struct_collection_that_throws_when_enumerated_passes_today()
         {
-            var (valid, errors) = Run(new Holder<ThrowingStructBag> { Value = new ThrowingStructBag() });
+            var (valid, errors) = Run(new Holder<ThrowingStructBag> { Value = new ThrowingStructBag(1) });
 
             Assert.True(valid);
             Assert.Empty(errors);
         }
 
 #if NET8_0_OR_GREATER
-        [Fact(Skip = Reason)]
+        [Fact]
         public void Immutable_array_property_is_validated()
         {
             var (valid, errors) = Run(new Holder<ImmutableArray<Leaf>> { Value = ImmutableArray.Create(new Leaf()) });
@@ -253,7 +299,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             Assert.Equal(ResultText.Expect("Value[0].Name" + NameRequired), errors);
         }
 
-        [Fact(Skip = Reason)]
+        [Fact]
         public void Immutable_array_of_immutable_arrays_property_is_validated()
         {
             var (valid, errors) = Run(new Holder<ImmutableArray<ImmutableArray<Leaf>>>
