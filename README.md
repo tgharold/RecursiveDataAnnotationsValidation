@@ -33,8 +33,16 @@ The [`[SkipRecursiveValidation]`](https://github.com/tgharold/RecursiveDataAnnot
 - Objects are compared by reference. Two separate objects that are `Equals` to each other, such as records with the same values or entities with the same `Id`, are each validated.
 - Public static properties are walked, as well as instance properties.
 - A property that builds a new object on each read, such as `public Money Zero => new Money(0)`, could make the walk go on forever. So when an object's type overrides `Equals`, and the object equals an object of the same type, a base type or a derived type on its own path from the root, the validator checks that object's own attributes but does not walk into its properties. An invalid object below it is not reached.
-- For a type that does not override `Equals`, mark such a property with `[SkipRecursiveValidation]`. Otherwise the walk overflows the stack, which ends the process.
+- For a type that does not override `Equals`, mark such a property with `[SkipRecursiveValidation]`. Otherwise the walk goes on until it reaches the maximum depth (see below), and the validation fails.
 - Two records that reference each other can also overflow the stack. A record's generated `Equals` compares properties in declaration order, so it follows the reference forever if it reaches it before a property that differs. This happens when the records have equal values, or when the reference is declared first. On .NET Framework it always happens, because the framework's `Validator` calls the record's generated `GetHashCode`, which follows the reference too. Marking the reference with `[SkipRecursiveValidation]` avoids the walk, but not the `GetHashCode` call on .NET Framework. There, override `GetHashCode` so it does not include the reference.
+
+### Maximum depth
+
+The validator walks at most 128 levels. The depth of an object is the number of segments in its path: each property and each collection index is one level, and the root object is level 0. In `Items[1].Name`, `Items` is level 1, `[1]` is level 2 and `Name` is level 3. System.Text.Json counts nearly the same way, with each object and each array as one level, and its default limit is 64. A JSON document within that limit stays within about 63 levels here.
+
+An object at level 128 is validated. An object at level 129 is not validated, and the validation fails with one error at its path: `The object is nested more than 128 levels deep and was not validated.` The walk does not go deeper below that object. A graph that is too deep means that something has gone wrong, such as a property that builds a new object on each read, so the validator fails the validation instead of letting the graph pass. It does not throw.
+
+A tree that holds its children in a `List<T>` uses two levels for each tree level, so it can be 64 levels deep. The limit is fixed.
 
 ### Collections
 

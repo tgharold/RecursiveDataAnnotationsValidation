@@ -536,16 +536,18 @@ namespace RecursiveDataAnnotationsValidation.Tests
             }
 
             /// <summary>
-            /// A chain a few hundred objects deep is validated without running out of stack.
+            /// A chain a hundred objects deep is validated without running out of stack.
             /// Both versions recurse once per level, so very deep graphs (thousands of levels)
-            /// can still overflow the stack in both.
+            /// can still overflow the stack in the old version. Since 3.0 the validator stops at
+            /// 128 levels and fails the validation (see MaxDepthTests), so a chain of 200, which
+            /// this test used before, is no longer the same in both versions.
             /// </summary>
             [Fact]
-            public void Chain_of_two_hundred_objects_is_validated()
+            public void Chain_of_one_hundred_objects_is_validated()
             {
                 var root = new Node { Name = "n" };
                 var node = root;
-                for (var i = 0; i < 200; i++)
+                for (var i = 0; i < 100; i++)
                 {
                     node.Next = new Node { Name = "n" };
                     node = node.Next;
@@ -554,7 +556,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
                 Assert.False(Validate(root, out var results));
                 var only = Assert.Single(results);
-                Assert.StartsWith(string.Concat(Enumerable.Repeat("Next.", 200)) + "Name |", only);
+                Assert.StartsWith(string.Concat(Enumerable.Repeat("Next.", 100)) + "Name |", only);
             }
 
             public class Node

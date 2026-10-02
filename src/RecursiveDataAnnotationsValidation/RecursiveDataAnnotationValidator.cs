@@ -11,6 +11,13 @@ namespace RecursiveDataAnnotationsValidation
     /// <summary>Recursive validator for DataAnnotation attribute-based validation.</summary>
     public class RecursiveDataAnnotationValidator : IRecursiveDataAnnotationValidator, IAsyncRecursiveDataAnnotationValidator
     {
+        //The deepest level that is validated. The depth of an object is the number of segments in its
+        //path: each property step and each collection index is one level, and the root is level 0.
+        //An object at a deeper level is not validated and fails the validation (see DepthExceededResult).
+        //The walk calls itself once for each level, and a StackOverflowException cannot be caught.
+        //128 is twice the depth that System.Text.Json allows by default, which counts nearly the same way.
+        internal const int MaxDepth = 128;
+
         /// <summary>Runs validation on an object.</summary>
         /// <param name="obj">The object being validated.</param>
         /// <param name="validationContext">Validation context.</param>
@@ -120,7 +127,8 @@ namespace RecursiveDataAnnotationsValidation
                 new HashSet<object>(ObjectReferenceComparer.Instance),
                 new List<object>(),
                 serviceProvider,
-                validationContextItems
+                validationContextItems,
+                0
                 );
         }
 
@@ -172,6 +180,7 @@ namespace RecursiveDataAnnotationsValidation
 
         //validatedObjects holds every object visited so far, compared by reference.
         //equalityPath holds the objects on the path from the root to this object whose type overrides Equals.
+        //depth is the number of segments in the path of obj, which is 0 for the root object.
         //enumerateItems is true for an item of a collection. If the item is itself a collection, its
         //items are validated too. A collection that a property holds is enumerated by the caller, and
         //the root object is never enumerated.
@@ -182,6 +191,7 @@ namespace RecursiveDataAnnotationsValidation
             List<object> equalityPath,
             IServiceProvider serviceProvider,
             IDictionary<object, object> validationContextItems,
+            int depth,
             bool enumerateItems = false
             )
         {
@@ -210,6 +220,15 @@ namespace RecursiveDataAnnotationsValidation
                 return TryValidateObject(obj, validationResults, serviceProvider, validationContextItems);
             }
 
+            //an object this deep is not validated and not walked, and the validation fails: nobody
+            //has checked it, so it must not pass. A leaf, an object seen before and an object that
+            //Equals an ancestor all returned above, because none of them walks any further.
+            if (depth > MaxDepth)
+            {
+                validationResults.Add(new DepthExceededResult());
+                return false;
+            }
+
             validatedObjects.Add(obj);
             if (overridesEquals) equalityPath.Add(obj);
 
@@ -235,7 +254,8 @@ namespace RecursiveDataAnnotationsValidation
                     validatedObjects,
                     equalityPath,
                     serviceProvider,
-                    validationContextItems
+                    validationContextItems,
+                    depth
                     ))
                 {
                     result = false;
@@ -271,6 +291,7 @@ namespace RecursiveDataAnnotationsValidation
                         //Array.SyncRoot, and enumerating it a second time would find nothing new
                         if (enumeratedItems && ReferenceEquals(value, obj)) continue;
 
+                        //the property is one level and the index of each item is another
                         if (!TryValidateItems(
                             asEnumerable,
                             property.Name,
@@ -278,7 +299,8 @@ namespace RecursiveDataAnnotationsValidation
                             validatedObjects,
                             equalityPath,
                             serviceProvider,
-                            validationContextItems
+                            validationContextItems,
+                            depth + 1
                             ))
                         {
                             result = false;
@@ -293,18 +315,20 @@ namespace RecursiveDataAnnotationsValidation
                             validatedObjects, 
                             equalityPath,
                             serviceProvider,
-                            validationContextItems
+                            validationContextItems,
+                            depth + 1
                             ))
                         {
                             result = false;
                             foreach (var validationResult in nestedResults)
                             {
                                 var property1 = property;
-                                validationResults.Add(
-                                new ValidationResult(
-                                    validationResult.ErrorMessage, 
-                                    validationResult.MemberNames.Select(x => property1.Name + '.' + x)
-                                    ));
+
+                                //an object that is too deep has no member names, and its path is the property
+                                var memberNames = validationResult is DepthExceededResult
+                                    ? new[] { property1.Name }
+                                    : validationResult.MemberNames.Select(x => property1.Name + '.' + x);
+                                validationResults.Add(new ValidationResult(validationResult.ErrorMessage, memberNames));
                             }
                         }
                         break;
@@ -318,6 +342,8 @@ namespace RecursiveDataAnnotationsValidation
         
         //Validates each item of a collection. The result of an item is added to validationResults with
         //its member names prefixed by the property name, if there is one, and the index of the item.
+        //collectionDepth is the depth of the collection, or of the property that holds it, so each
+        //item is one level deeper.
         private bool TryValidateItems(
             IEnumerable items,
             string propertyName,
@@ -325,7 +351,8 @@ namespace RecursiveDataAnnotationsValidation
             ISet<object> validatedObjects,
             List<object> equalityPath,
             IServiceProvider serviceProvider,
-            IDictionary<object, object> validationContextItems
+            IDictionary<object, object> validationContextItems,
+            int collectionDepth
             )
         {
             var result = true;
@@ -345,6 +372,7 @@ namespace RecursiveDataAnnotationsValidation
                     equalityPath,
                     serviceProvider,
                     validationContextItems,
+                    collectionDepth + 1,
                     enumerateItems: true
                     ))
                 {
@@ -354,9 +382,12 @@ namespace RecursiveDataAnnotationsValidation
                     {
                         //the member names of an item that is a collection start with the index of its own items
                         var startsWithIndex = validationResult is ItemOfCollectionResult;
-                        var memberNames = validationResult.MemberNames
-                            .Select(x => propertyName + "[" + index + "]" + (startsWithIndex ? "" : ".") + x)
-                            .ToList();
+                        //an item that is too deep has no member names, and its path is the index
+                        var memberNames = validationResult is DepthExceededResult
+                            ? new List<string> { propertyName + "[" + index + "]" }
+                            : validationResult.MemberNames
+                                .Select(x => propertyName + "[" + index + "]" + (startsWithIndex ? "" : ".") + x)
+                                .ToList();
 
                         //With no property name, the result is for an item that is a collection: the
                         //caller puts its own index in front of these names, with no dot.
@@ -368,6 +399,17 @@ namespace RecursiveDataAnnotationsValidation
             }
 
             return result;
+        }
+
+        //The result for an object that is deeper than MaxDepth. It has no member names at first. The
+        //caller that knows how it reached the object gives it that path as its only member name, and
+        //every caller above it prefixes the name like any other, so the final name is the full path.
+        private sealed class DepthExceededResult : ValidationResult
+        {
+            public DepthExceededResult()
+                : base("The object is nested more than " + MaxDepth + " levels deep and was not validated.")
+            {
+            }
         }
 
         //A result whose member names start with the index of an item, such as "[0].Name", and not

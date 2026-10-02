@@ -11,7 +11,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
 {
     /// <summary>
     /// Large graphs: deep chains and wide lists. Real models are shallow, but a linked list, a
-    /// comment thread or a category tree can be hundreds of levels deep, and an import can hold
+    /// comment thread or a category tree can be dozens of levels deep, and an import can hold
     /// thousands of items.
     ///
     /// The walk calls itself once for each level, so the depth of the graph is the depth of the
@@ -20,20 +20,22 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// stack would pass on those systems and still overflow on Windows.
     /// See: https://learn.microsoft.com/dotnet/api/system.threading.thread.-ctor
     ///
-    /// Known limit: the validator has no maximum depth. On a 1 MB stack, a chain of about 1,300
-    /// objects passes and a chain of about 1,600 overflows the stack, in both Debug and Release
-    /// builds on .NET 8 (measured on macOS). The numbers change with the runtime and the size of
-    /// the objects. .NET cannot catch a StackOverflowException, so the process ends. These tests
-    /// stay at a depth of 250, five times below the lowest depth that failed, because a test
-    /// that overflows would end the whole test run. A depth limit is a deferred item from the
-    /// reference-equality work (PR #64).
+    /// The validator has a maximum depth of 128 (see MaxDepthTests), which these tests stay below.
+    /// Before the limit, a chain of about 1,300 objects passed on a 1 MB stack and a chain of about
+    /// 1,600 overflowed it, in both Debug and Release builds on .NET 8 (measured on macOS). The
+    /// numbers change with the runtime and the size of the objects. .NET cannot catch a
+    /// StackOverflowException, so the process ends.
     /// See: https://learn.microsoft.com/dotnet/api/system.stackoverflowexception
     ///
     /// The tests only use the public API, so they also pass against the validator of v2.2.0.
+    /// A chain of 120 objects is deeper than a real model and below the limit. A tree that holds
+    /// its children in a List has two levels for each tree level, so it is 60 levels deep.
     /// </summary>
     public class GraphSizeTests
     {
-        private const int Depth = 250;
+        private const int Depth = 120;
+
+        private const int TreeDepth = 60;
 
         private const int OneMegabyte = 1024 * 1024;
 
@@ -145,7 +147,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             public async Task Error_at_the_bottom_has_the_full_path_in_the_async_method()
             {
                 // Task.Run uses a thread-pool thread, whose stack size the caller cannot choose.
-                // A depth of 250 is far below the limit measured for a 1 MB stack.
+                // A depth of 120 is far below the limit measured for a 1 MB stack.
                 var results = new List<ValidationResult>();
 
                 var valid = await new RecursiveDataAnnotationValidator()
@@ -160,16 +162,16 @@ namespace RecursiveDataAnnotationsValidation.Tests
             {
                 var root = new TreeNode { Name = "ok" };
                 var current = root;
-                for (var i = 0; i < Depth; i++)
+                for (var i = 0; i < TreeDepth; i++)
                 {
-                    var child = new TreeNode { Name = i == Depth - 1 ? null : "ok" };
+                    var child = new TreeNode { Name = i == TreeDepth - 1 ? null : "ok" };
                     current.Children.Add(child);
                     current = child;
                 }
 
                 var (valid, errors) = Run(root);
 
-                var path = string.Join(".", Enumerable.Repeat("Children[0]", Depth).Concat(new[] { "Name" }));
+                var path = string.Join(".", Enumerable.Repeat("Children[0]", TreeDepth).Concat(new[] { "Name" }));
                 Assert.False(valid);
                 Assert.Equal(ResultText.Expect($"{path} | Name is required"), errors);
             }

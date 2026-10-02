@@ -8,6 +8,10 @@ Breaking changes are marked **BREAKING**.
 
 ## Unreleased
 
+### Added
+
+- **BREAKING** A maximum depth of 128 levels. An object at a path of more than 128 segments is not validated, and the validation fails with one error at that path: `The object is nested more than 128 levels deep and was not validated.` Each property step and each collection index counts as one level, so a tree that holds its children in a `List<T>` can be 64 levels deep. Before, the validator had no limit, and a graph of about 1,500 objects, or a property that builds a new object on each read, overflowed the stack, which ends the process. A graph that is deeper than 128 levels passed before and fails now. Change any model that is that deep, or mark the property that leads into it with `[SkipRecursiveValidation]`. The limit is not a setting.
+
 ### Fixed
 
 - A struct collection that a property holds, such as `ImmutableArray<T>` or a struct of your own that implements `IEnumerable<T>`, is now validated. Before, the validator skipped every property whose type is a struct, so an invalid object inside passed, although the same struct was validated as an item of a list. The error is reported like one for a class collection, for example `Lines[0].Sku`. A model that passed before can fail now. A struct property that is not a collection, such as a `Money`, is still not walked. A struct collection that throws when enumerated now throws from the property too.
@@ -24,7 +28,7 @@ Breaking changes are marked **BREAKING**.
   - `SortedSet<T>`: `Value[0].Min.Name` is now `Value[0][0].Name`.
   - A collection of your own with a property that returns its items, such as `View`: `Value[0].View[0].Name` is now `Value[0][0].Name`.
 - **BREAKING** An item that is a collection is now enumerated, so a lazy sequence in an item runs, as it does when a property holds it. An item that throws when enumerated now throws from validation, and an item that never ends makes validation hang. To avoid it, mark the property that holds the collection with `[SkipRecursiveValidation]`.
-- A deeply nested collection uses more of the stack. On a 1 MB stack, a chain of `List<object>` that holds the next list passes at 1,100 levels and overflows at 1,200, which ends the process (net8.0, macOS, Release). Before, such a list passed without being enumerated. The validator still has no maximum depth.
+- A deeply nested collection uses more of the stack. On a 1 MB stack, a chain of `List<object>` that holds the next list passes at 1,100 levels and overflows at 1,200, which ends the process (net8.0, macOS, Release). Before, such a list passed without being enumerated. The maximum depth of 128 now stops the walk long before the stack is full.
 - The NuGet package title now reads "Recursive DataAnnotations Validation". It was misspelled "Recurisive".
 - Known limit: an invalid struct that an item collection returns by enumeration and also through one of its properties is reported twice, with two member names, for example `Value[0][0].Text` and `Value[0].Array[0].Text` for an `ArraySegment<T>`. The validator cannot match two copies of a struct by reference. A struct that two properties hold was already reported twice. Objects of a class are reported once.
 
