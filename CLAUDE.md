@@ -52,7 +52,7 @@ dotnet test test/RecursiveDataAnnotationsValidation.Tests/RecursiveDataAnnotatio
 ## Key Files to Understand
 
 - `RecursiveDataAnnotationValidator.cs` - Main implementation that handles recursive object validation
-- `SkipRecursiveValidationAttribute.cs` - Attribute for excluding properties from recursive validation
+- `SkipRecursiveValidation.cs` - Attribute for excluding properties from recursive validation
 - Test models in `test/RecursiveDataAnnotationsValidation.Tests/TestModels/` show various usage patterns
 
 ## Target Frameworks
