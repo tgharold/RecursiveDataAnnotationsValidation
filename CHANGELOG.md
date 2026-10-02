@@ -8,6 +8,10 @@ Breaking changes are marked **BREAKING**.
 
 ## Unreleased
 
+### Changed
+
+- The NuGet package title now reads "Recursive DataAnnotations Validation". It was misspelled "Recurisive".
+
 ## 2.3.3 - 2026-10-01
 
 ### Fixed
