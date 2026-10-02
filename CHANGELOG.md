@@ -8,6 +8,14 @@ Breaking changes are marked **BREAKING**.
 
 ## Unreleased
 
+## 2.3.2 - 2026-10-01
+
+No library changes. The NuGet package contents are the same as v2.3.1.
+
+### Changed
+
+- Release workflow: build the package and create a draft GitHub release first. Then wait for approval before the nuget.org push and the release publish.
+
 ## 2.3.1 - 2026-10-01
 
 No library changes. The NuGet package contents are the same as v2.3.0.
