@@ -321,7 +321,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// ends. That case has no test, because it would hang the run.
         /// Whether the walk should read Result only for a task that ran to completion is an open
         /// decision. If it changes, these two tests fail on purpose, and the fix replaces them
-        /// with tests that expect a valid walk. A completed Task&lt;T&gt; is pinned elsewhere
+        /// with the skipped specs in TaskPropertyTests, which expect a valid walk. A completed Task&lt;T&gt; is pinned elsewhere
         /// (OddShapeTests, Completed_task_property_is_validated_through_its_result).
         /// v2.2.0 behaves the same.
         /// See: https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1.result
