@@ -86,6 +86,13 @@ namespace RecursiveDataAnnotationsValidation.Tests
             public List<object> Items { get; set; }
         }
 
+        public class TypedHolder<T>
+        {
+            public T Value { get; set; }
+
+            public Leaf Sibling { get; set; } = new Leaf();
+        }
+
         // Runs the validator on its own thread, so a hang fails the test instead of the whole run.
         // The thread is a background thread, so a hung walk does not keep the test host alive.
         // A thread in the pool would also work, but a hung one would stay in the pool for good.
@@ -310,6 +317,97 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.False(valid);
                 Assert.Equal(ResultText.Expect("Items[1].Name | Name is required"), errors);
             }
+        }
+
+        /// <summary>
+        /// Framework types that 3.0 adds to the deny list, because 3.0 walks a struct property that
+        /// has something to validate, and these structs have a property of a reference type.
+        /// Reading that property throws or waits:
+        /// - A null SqlString or SqlDecimal throws SqlNullValueException from CompareInfo or Data.
+        ///   SqlBytes is a class with the same problem. All SqlTypes types implement INullable.
+        /// - A GCHandle that is not allocated throws InvalidOperationException from Target.
+        /// - ValueTask&lt;T&gt;.Result waits for a task that has not finished. When the ValueTask
+        ///   wraps an IValueTaskSource, Result asks the source for its result. A pooled source can
+        ///   then be reused, so a second read gets the result of another operation.
+        /// Each type was already walked in a property declared as object and as an item of a
+        /// List&lt;object&gt;, so those shapes threw, or read Result, before 3.0 too. These tests
+        /// fail against 2.3.3.
+        /// See: https://learn.microsoft.com/dotnet/api/system.data.sqltypes.inullable
+        /// See: https://learn.microsoft.com/dotnet/api/system.runtime.interopservices.gchandle.target
+        /// See: https://learn.microsoft.com/dotnet/api/system.threading.tasks.valuetask-1
+        /// </summary>
+        public class FixedSince30
+        {
+            private static void AssertWalkedWithoutErrorInEveryShape<T>(Func<T> create)
+            {
+                AssertWalkedWithoutError(() => create());
+
+                var (valid, errors) = Run(new TypedHolder<T> { Value = create() });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Sibling.Name | Name is required"), errors);
+            }
+
+            [Fact]
+            public void Null_SqlString_is_walked_without_error()
+            {
+                AssertWalkedWithoutErrorInEveryShape(() => System.Data.SqlTypes.SqlString.Null);
+            }
+
+            [Fact]
+            public void Null_SqlDecimal_is_walked_without_error()
+            {
+                AssertWalkedWithoutErrorInEveryShape(() => System.Data.SqlTypes.SqlDecimal.Null);
+            }
+
+            [Fact]
+            public void Null_SqlBytes_is_walked_without_error()
+            {
+                AssertWalkedWithoutErrorInEveryShape(() => System.Data.SqlTypes.SqlBytes.Null);
+            }
+
+            [Fact]
+            public void GCHandle_that_is_not_allocated_is_walked_without_error()
+            {
+                AssertWalkedWithoutErrorInEveryShape(() => default(System.Runtime.InteropServices.GCHandle));
+            }
+
+#if NET8_0_OR_GREATER
+            // A source that never finishes and counts the reads of its result. A ValueTask over a
+            // Task that never finishes would make Result wait, and hang the run.
+            // See: https://learn.microsoft.com/dotnet/api/system.threading.tasks.sources.ivaluetasksource-1
+            private sealed class PendingSource : System.Threading.Tasks.Sources.IValueTaskSource<Leaf>
+            {
+                public int ResultReads;
+
+                public Leaf GetResult(short token)
+                {
+                    ResultReads++;
+                    return new Leaf();
+                }
+
+                public System.Threading.Tasks.Sources.ValueTaskSourceStatus GetStatus(short token) =>
+                    System.Threading.Tasks.Sources.ValueTaskSourceStatus.Pending;
+
+                public void OnCompleted(
+                    Action<object> continuation,
+                    object state,
+                    short token,
+                    System.Threading.Tasks.Sources.ValueTaskSourceOnCompletedFlags flags)
+                {
+                }
+            }
+
+            [Fact]
+            public void Result_of_a_ValueTask_is_not_read()
+            {
+                var source = new PendingSource();
+
+                AssertWalkedWithoutErrorInEveryShape(() => new ValueTask<Leaf>(source, 0));
+
+                Assert.Equal(0, source.ResultReads);
+            }
+#endif
         }
 
         /// <summary>

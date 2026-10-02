@@ -26,8 +26,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// that is not a collection of leaf types, and a Nullable of such a struct. The walk reads the
     /// value, which is boxed, and enumerates it like any other collection. The path is the same
     /// as for a collection that is a class: Value[0].Name.
-    /// - A struct that is not a collection, such as a Money, is still skipped. An attribute on
-    ///   its members is still not checked (see OddShapeTests.StructsAreNotWalked).
+    /// - A struct that is not a collection, such as a Money, is walked when it has something to
+    ///   validate, and skipped when it is a leaf type (see OddShapeTests.StructProperties).
     /// - A struct in a property that is its default value, such as a default ImmutableArray or
     ///   ArraySegment, is skipped, as an item is (see NestedCollectionEdgeCaseTests, Case 2). It
     ///   passed before, and enumerating it would add a crash. The check compares memory, and does
