@@ -3,9 +3,11 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using RecursiveDataAnnotationsValidation.Attributes;
 
 namespace RecursiveDataAnnotationsValidation.Extensions
@@ -38,6 +40,8 @@ namespace RecursiveDataAnnotationsValidation.Extensions
             typeof(Delegate),       // Method is a MethodInfo, and Target is a closure object
             typeof(Uri),            // a relative Uri throws from Segments and others
             typeof(FileSystemInfo), // DirectoryInfo.Root returns a new DirectoryInfo on each read
+            typeof(Thread),         // CurrentCulture and others throw when read from another thread
+            typeof(Process),        // StartInfo and others throw for a process this object did not start
         };
 
         private static int _typeDescriptorVersion;

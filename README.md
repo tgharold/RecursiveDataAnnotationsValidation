@@ -37,7 +37,7 @@ The [`[SkipRecursiveValidation]`](https://github.com/tgharold/RecursiveDataAnnot
 
 ### Framework types that are not walked
 
-The validator does not walk the properties that these framework types declare: `Type` and other `MemberInfo` types, `Assembly`, `Module`, delegates, `Uri`, and `FileSystemInfo`, which covers `DirectoryInfo` and `FileInfo`. Reading those properties throws or never ends, for example `Uri.Segments` on a relative `Uri`, and they carry no validation attributes.
+The validator does not walk the properties that these framework types declare: `Type` and other `MemberInfo` types, `Assembly`, `Module`, delegates, `Uri`, `FileSystemInfo`, which covers `DirectoryInfo` and `FileInfo`, `Thread`, and `Process`. Reading those properties throws or never ends, for example `Uri.Segments` on a relative `Uri`, and they carry no validation attributes.
 
 An object of one of these types is still validated. Attributes on the property that holds it, such as `[Required]` on a `Uri` property, still run. A subclass of your own, such as a class derived from `Uri`, is validated too, and the properties it adds are walked.
 

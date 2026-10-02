@@ -243,12 +243,15 @@ namespace RecursiveDataAnnotationsValidation.Tests
         }
 
         /// <summary>
-        /// A framework type that v2.2.0 could not walk and 2.3 can. These tests fail against the
-        /// validator of v2.2.0 on purpose: it throws InvalidOperationException ("Method may only be
-        /// called on a Type for which Type.IsGenericParameter is true"), from Type.DeclaringMethod.
-        /// That is the failure the deny list prevents (see IsUnsafeToWalk), so the walk of
-        /// ClaimsPrincipal reaches a Type object. A ClaimsPrincipal is a realistic model member, for
-        /// example the user on a request wrapper.
+        /// Framework types that v2.2.0 could not walk and the deny list lets 2.3 walk. These tests
+        /// fail against the validator of v2.2.0 on purpose.
+        /// ClaimsPrincipal: v2.2.0 throws InvalidOperationException ("Method may only be called on
+        /// a Type for which Type.IsGenericParameter is true"), from Type.DeclaringMethod. The walk
+        /// reaches a Type object. A ClaimsPrincipal is a realistic model member, for example the
+        /// user on a request wrapper.
+        /// Thread and Process: reading their properties throws, because the object only works for
+        /// the thread or process that created it. Neither is a model type in a real project, but
+        /// the walk should not throw when one is held.
         /// </summary>
         public class FixedSince23
         {
@@ -259,32 +262,35 @@ namespace RecursiveDataAnnotationsValidation.Tests
                     new System.Security.Claims.ClaimsIdentity(
                         new[] { new System.Security.Claims.Claim("role", "admin") }, "test")));
             }
-        }
 
-        /// <summary>
-        /// Framework objects that are still unsafe. These are open bugs: reading the properties of
-        /// the object throws, because the object only works for the thread or process that created
-        /// it. They are the same bug that the deny list fixed for Type, Uri and DirectoryInfo.
-        /// Neither type is a model type in a real project, so the risk is small. The specs stay
-        /// skipped until the user decides whether to add the types to the deny list.
-        /// A fix test must pass the same assertions as Framework_object_is_walked_without_error.
-        /// v2.2.0 throws the same way.
-        /// </summary>
-        public class StillUnsafe
-        {
-            [Fact(Skip = "Not fixed yet. Thread.CurrentThread throws InvalidOperationException from a property read on another thread.")]
+            // Run walks on a new thread, not on the thread that Value represents. Some Thread
+            // properties throw InvalidOperationException ("This operation must be performed on
+            // the same thread as that represented by the Thread instance") when read elsewhere.
+            [Fact]
             public void Thread_object_is_walked_without_error()
             {
-                // Run walks on a new thread, not on the thread that Value represents. Some Thread
-                // properties throw InvalidOperationException ("This operation must be performed on
-                // the same thread as that represented by the Thread instance") when read elsewhere.
                 var (valid, errors) = Run(new Holder { Value = Thread.CurrentThread });
 
                 Assert.False(valid);
                 Assert.Equal(ResultText.Expect("Sibling.Name | Name is required"), errors);
             }
 
-            [Fact(Skip = "Not fixed yet. Process.GetCurrentProcess() throws InvalidOperationException from a property read.")]
+            [Fact]
+            public void Thread_in_a_list_is_walked_without_error()
+            {
+                var (valid, errors) = Run(new ItemHolder
+                {
+                    Items = new List<object> { Thread.CurrentThread, new Leaf() }
+                });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Items[1].Name | Name is required"), errors);
+            }
+
+            // Process.GetCurrentProcess() throws InvalidOperationException from a property read.
+            // Process.StartInfo says "Process was not started by this object", because this
+            // process was not started through a Process object.
+            [Fact]
             public void Process_object_is_walked_without_error()
             {
                 var (valid, errors) = Run(new Holder { Value = System.Diagnostics.Process.GetCurrentProcess() });
@@ -293,7 +299,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.Equal(ResultText.Expect("Sibling.Name | Name is required"), errors);
             }
 
-            [Fact(Skip = "Not fixed yet. A Process in a list throws like a Process property.")]
+            [Fact]
             public void Process_in_a_list_is_walked_without_error()
             {
                 var (valid, errors) = Run(new ItemHolder
