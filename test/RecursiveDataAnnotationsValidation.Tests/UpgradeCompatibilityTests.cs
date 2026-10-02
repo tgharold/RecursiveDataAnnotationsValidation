@@ -15,7 +15,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// the same true/false answer and the same results as 2.2, with the same member names and
     /// messages, in the same order.
     ///
-    /// Every test here passes against the validator source of both v2.2.0 and v2.2.4. To check
+    /// Every test here passes against the validator source of both v2.2.0 and v2.2.4, in the same
+    /// order, except where the list below says that 3.0 differs. To check
     /// that again, copy the old source over the current one, run only this class, then restore it:
     ///   git show v2.2.0:src/RecursiveDataAnnotationsValidation/RecursiveDataAnnotationValidator.cs \
     ///     > src/RecursiveDataAnnotationsValidation/RecursiveDataAnnotationValidator.cs
@@ -29,6 +30,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// - Framework types such as Type, delegates and relative Uris (ValidatorHardeningTests).
     /// - Lazy sequences of primitives, which 2.3 no longer runs (ValidatorHardeningTests).
     /// - A null object or context, and a property hidden with `new` (fixed in 2.2.4).
+    /// - The order of the results, and the path of an object that two routes reach, which 3.0
+    ///   changed with its breadth-first walk (BreadthFirstWalkTests).
     ///
     /// The messages are the framework's default English messages, or a custom ErrorMessage where
     /// .NET Framework and .NET might word a default differently.
@@ -129,51 +132,6 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
                 Assert.True(valid);
                 Assert.Single(list);
-            }
-
-            /// <summary>
-            /// Callers who show errors in a list see them in this order: the root object's own
-            /// results first, as the framework's Validator returns them, then the results of the
-            /// objects one level below it, in the order reflection lists the properties, then the
-            /// objects two levels below it. The walk is breadth first since 3.0, so the shallowest
-            /// objects come first. Up to 2.3 it was depth first, and the items of Items came
-            /// between First and Last. An item of a collection is two levels below its object, one
-            /// for the property and one for the index, so it comes after Last, which is one level
-            /// below. Reflection does not promise declaration order, but every release makes the
-            /// same GetProperties call. The test runs on every target framework.
-            /// See: https://learn.microsoft.com/dotnet/api/system.type.getproperties
-            /// </summary>
-            [Fact]
-            public void Root_results_come_first_then_nested_results_in_property_order()
-            {
-                var root = new Ordered
-                {
-                    First = new Leaf(),
-                    Items = new List<Leaf> { new Leaf(), new Leaf() },
-                    Last = new Leaf(),
-                };
-
-                var list = new List<ValidationResult>();
-                new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(root, list);
-
-                Assert.Equal(
-                    new[] { "A", "Z", "First.Name", "Last.Name", "Items[0].Name", "Items[1].Name" },
-                    list.Select(r => string.Join(",", r.MemberNames)));
-            }
-
-            public class Ordered
-            {
-                [Required]
-                public string A { get; set; }
-
-                public Leaf First { get; set; }
-
-                public List<Leaf> Items { get; set; }
-
-                public Leaf Last { get; set; }
-
-                [Required]
-                public string Z { get; set; }
             }
 
             /// <summary>
