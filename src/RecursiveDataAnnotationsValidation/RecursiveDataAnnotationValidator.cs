@@ -171,7 +171,7 @@ namespace RecursiveDataAnnotationsValidation
                 }
 
                 queuedObjects.Add(root);
-                queue.Enqueue(new WorkItem(root, null, 0, null, false, false, false));
+                queue.Enqueue(new WorkItem(root, null, 0, null, false, false));
 
                 var valid = true;
                 while (queue.Count > 0)
@@ -199,8 +199,7 @@ namespace RecursiveDataAnnotationsValidation
                 string propertyName,
                 int index,
                 int depth,
-                EqualsAncestor ancestors,
-                bool enumerateItems
+                EqualsAncestor ancestors
                 )
             {
                 //an object of a leaf type can never produce a result, such as a boxed int in an object[] (see IsLeafType)
@@ -224,7 +223,6 @@ namespace RecursiveDataAnnotationsValidation
                     new PathStep(parent, propertyName, index),
                     depth,
                     ancestors,
-                    enumerateItems,
                     false,
                     stopHere
                     ));
@@ -247,7 +245,7 @@ namespace RecursiveDataAnnotationsValidation
                     //NOTE: Possibly should have a separate case for Dictionary which reports on the key
 
                     if (item == null) continue;
-                    Enqueue(item, collectionPath, null, arrayIndex, itemDepth, ancestors, true);
+                    Enqueue(item, collectionPath, null, arrayIndex, itemDepth, ancestors);
                 }
             }
 
@@ -291,15 +289,16 @@ namespace RecursiveDataAnnotationsValidation
                 //an object that a shorter path stopped at was validated there, so only walk it now
                 var result = (stoppedObjects.Count > 0 && stoppedObjects.Contains(obj)) || Validate(item);
 
-                //An item that is a collection is validated as an object above, so its own attributes run.
-                //Then its items are queued, before its properties. An object that the collection also
-                //returns from a property, such as Array.SyncRoot, is then reported at its index
-                //(Value[0][0]) and not through the property (Value[0].SyncRoot[0]).
+                //A collection that gets here is the root object or an item of another collection. It is
+                //validated as an object above, so its own attributes run. Then its items are queued,
+                //before its properties. An object that the collection also returns from a property,
+                //such as Array.SyncRoot, is then reported at its index (Value[0][0], or [0] for the root)
+                //and not through the property (Value[0].SyncRoot[0]). A collection that a property
+                //holds never gets here: it waits in the queue as a step of its own (see below).
                 //A collection of leaf types is skipped, like a collection that a property holds. A default
                 //struct, such as an ImmutableArray nobody set, is skipped: it holds nothing and enumerating it throws.
                 var enumeratedItems = false;
-                if (item.EnumerateItems
-                    && obj is IEnumerable items
+                if (obj is IEnumerable items
                     && !type.IsCollectionOfLeafType()
                     && !obj.IsDefaultStruct())
                 {
@@ -343,14 +342,13 @@ namespace RecursiveDataAnnotationsValidation
                                 new PathStep(item.Path, property.Name, -1),
                                 item.Depth + 1,
                                 ancestors,
-                                false,
                                 true,
                                 false
                                 ));
                             break;
 
                         default:
-                            Enqueue(value, item.Path, property.Name, -1, item.Depth + 1, ancestors, false);
+                            Enqueue(value, item.Path, property.Name, -1, item.Depth + 1, ancestors);
                             break;
                     }
                 }
@@ -425,9 +423,6 @@ namespace RecursiveDataAnnotationsValidation
         //IsCollectionOfProperty is true for the collection that a property holds. It is not validated
         //as an object. Its items are queued when it comes out of the queue.
         //Ancestors are the objects on the path whose type overrides Equals, the nearest one first.
-        //EnumerateItems is true for an item of a collection. If the item is itself a collection, its
-        //items are walked too. A collection that a property holds is enumerated by the object that
-        //holds it, and the root object is never enumerated.
         private sealed class WorkItem
         {
             public WorkItem(
@@ -435,7 +430,6 @@ namespace RecursiveDataAnnotationsValidation
                 PathStep path,
                 int depth,
                 EqualsAncestor ancestors,
-                bool enumerateItems,
                 bool isCollectionOfProperty,
                 bool equalsAnAncestor
                 )
@@ -445,7 +439,6 @@ namespace RecursiveDataAnnotationsValidation
                 Path = path;
                 Depth = depth;
                 Ancestors = ancestors;
-                EnumerateItems = enumerateItems;
                 IsCollectionOfProperty = isCollectionOfProperty;
             }
 
@@ -453,7 +446,6 @@ namespace RecursiveDataAnnotationsValidation
             public PathStep Path { get; }
             public int Depth { get; }
             public EqualsAncestor Ancestors { get; }
-            public bool EnumerateItems { get; }
             public bool IsCollectionOfProperty { get; }
             public bool EqualsAnAncestor { get; }
         }

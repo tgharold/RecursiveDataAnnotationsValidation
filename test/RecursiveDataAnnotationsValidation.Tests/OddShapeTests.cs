@@ -29,7 +29,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// - A spec. It is not skipped and fails until the fix lands. It states the behavior the fix gives.
     /// Every result below is the same on release 2.2.0 and on the current code, except the
     /// framework types in MembersThatThrow, which are no longer walked, and the collections in
-    /// CollectionsInsideCollections, which 3.0 enumerates.
+    /// CollectionsInsideCollections and CollectionAsRootObject, which 3.0 enumerates.
     /// Not covered here, because it stops the test run: a Task that has not completed makes the
     /// walk read Task.Result, which waits forever. The open decision, with skipped specs, is in
     /// TaskPropertyTests.
@@ -580,31 +580,98 @@ namespace RecursiveDataAnnotationsValidation.Tests
         }
 
         /// <summary>
-        /// A collection as the object passed to the validator. The validator validates that object
-        /// and walks its properties, but never enumerates it, because an item is only reached
-        /// through a property. So a List that is the root hides its items, and a root array reports
-        /// its items through SyncRoot. This is not changed by the fix for nested collections.
-        /// These are limitation guards. If the validator learns to enumerate a root collection,
-        /// the tests fail on purpose, so the change is deliberate. The path format for it is open.
+        /// A collection as the object passed to the validator. Up to 3.0, the validator validated
+        /// that object and walked its properties, but never enumerated it, because an item was
+        /// only reached through a property. So a List that is the root hid its items and passed,
+        /// and a root array reported its items through SyncRoot: "SyncRoot[0].Name".
+        /// Release 3.0 enumerates a root collection like an item that is a collection. The path of
+        /// an item starts with its index, and has no name in front: "[0].Name". MVC model binding
+        /// uses the same format for a collection that is bound as the top-level object.
+        /// The root collection is still validated as an object first, so its own attributes run,
+        /// and their member names have no path, as for any root object.
+        /// See: https://learn.microsoft.com/aspnet/core/mvc/models/model-binding#collections
         /// </summary>
         public class CollectionAsRootObject
         {
-            [Fact]
-            public void Items_of_a_root_list_are_not_validated()
+            public class PagedList<T> : List<T>
             {
-                var (valid, errors) = Run(new List<Leaf> { new Leaf() });
+                [Required]
+                public string Cursor { get; set; }
+            }
+
+            [Fact]
+            public void Items_of_a_root_list_are_validated()
+            {
+                var (valid, errors) = Run(new List<Leaf> { new Leaf { Name = "n" }, new Leaf() });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("[1].Name" + NameRequired), errors);
+            }
+
+            // An array returns itself from SyncRoot. The items are enumerated first, so the path
+            // no longer goes through SyncRoot.
+            [Fact]
+            public void Items_of_a_root_array_are_validated_at_their_index()
+            {
+                var (valid, errors) = Run(new[] { new Leaf() });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("[0].Name" + NameRequired), errors);
+            }
+
+            // A dictionary is enumerated as KeyValuePair items, as when a property holds it.
+            [Fact]
+            public void Values_of_a_root_dictionary_are_validated()
+            {
+                var (valid, errors) = Run(new Dictionary<string, Leaf> { ["a"] = new Leaf() });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("[0].Value.Name" + NameRequired), errors);
+            }
+
+            [Fact]
+            public void Items_of_a_root_list_of_lists_are_validated()
+            {
+                var (valid, errors) = Run(new List<List<Leaf>> { new List<Leaf> { new Leaf() } });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("[0][0].Name" + NameRequired), errors);
+            }
+
+            // The root collection's own attribute keeps its member name with no path, like any
+            // root object. Its items come one level later.
+            [Fact]
+            public void Root_collection_with_members_of_its_own_reports_both()
+            {
+                var page = new PagedList<Leaf> { Cursor = null };
+                page.Add(new Leaf());
+
+                var (valid, errors) = Run(page);
+
+                Assert.False(valid);
+                Assert.Equal(
+                    ResultText.Expect("Cursor | The Cursor field is required.", "[0].Name" + NameRequired),
+                    errors);
+            }
+
+            // Guard. A root collection of simple values has nothing to validate.
+            [Fact]
+            public void Root_list_of_strings_passes()
+            {
+                var (valid, errors) = Run(new List<string> { null, "a" });
 
                 Assert.True(valid);
                 Assert.Empty(errors);
             }
 
+            // Guard. A null item is skipped but still uses up its index, as in a property.
             [Fact]
-            public void Items_of_a_root_array_are_validated_through_SyncRoot()
+            public void Null_item_of_a_root_list_keeps_its_index()
             {
-                var (valid, errors) = Run(new[] { new Leaf() });
+                var (valid, errors) = Run(new List<Leaf> { null, new Leaf() });
 
                 Assert.False(valid);
-                Assert.Equal(ResultText.Expect("SyncRoot[0].Name" + NameRequired), errors);
+                Assert.Equal(ResultText.Expect("[1].Name" + NameRequired), errors);
             }
         }
 
