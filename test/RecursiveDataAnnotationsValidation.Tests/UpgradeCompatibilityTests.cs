@@ -133,10 +133,14 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
             /// <summary>
             /// Callers who show errors in a list see them in this order: the root object's own
-            /// results first, as the framework's Validator returns them, then the results of each
-            /// walked property in the order reflection lists the properties. Reflection does not
-            /// promise declaration order, but 2.2 and 2.3 make the same GetProperties call, so the
-            /// order is the same in both. The test runs on every target framework.
+            /// results first, as the framework's Validator returns them, then the results of the
+            /// objects one level below it, in the order reflection lists the properties, then the
+            /// objects two levels below it. The walk is breadth first since 3.0, so the shallowest
+            /// objects come first. Up to 2.3 it was depth first, and the items of Items came
+            /// between First and Last. An item of a collection is two levels below its object, one
+            /// for the property and one for the index, so it comes after Last, which is one level
+            /// below. Reflection does not promise declaration order, but every release makes the
+            /// same GetProperties call. The test runs on every target framework.
             /// See: https://learn.microsoft.com/dotnet/api/system.type.getproperties
             /// </summary>
             [Fact]
@@ -153,7 +157,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(root, list);
 
                 Assert.Equal(
-                    new[] { "A", "Z", "First.Name", "Items[0].Name", "Items[1].Name", "Last.Name" },
+                    new[] { "A", "Z", "First.Name", "Last.Name", "Items[0].Name", "Items[1].Name" },
                     list.Select(r => string.Join(",", r.MemberNames)));
             }
 
@@ -537,9 +541,9 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
             /// <summary>
             /// A chain a hundred objects deep is validated without running out of stack.
-            /// Both versions recurse once per level, so very deep graphs (thousands of levels)
-            /// can still overflow the stack in the old version. Since 3.0 the validator stops at
-            /// 128 levels and fails the validation (see MaxDepthTests), so a chain of 200, which
+            /// The old version recurses once per level, so very deep graphs (thousands of levels)
+            /// can overflow the stack in it. Since 3.0 the walk uses a queue and stops at
+            /// 128 levels, failing the validation (see MaxDepthTests), so a chain of 200, which
             /// this test used before, is no longer the same in both versions.
             /// </summary>
             [Fact]

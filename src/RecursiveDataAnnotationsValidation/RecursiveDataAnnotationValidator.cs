@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using RecursiveDataAnnotationsValidation.Extensions;
 
@@ -12,9 +13,9 @@ namespace RecursiveDataAnnotationsValidation
     public class RecursiveDataAnnotationValidator : IRecursiveDataAnnotationValidator, IAsyncRecursiveDataAnnotationValidator
     {
         //The deepest level that is validated. The depth of an object is the number of segments in its
-        //path: each property step and each collection index is one level, and the root is level 0.
-        //An object at a deeper level is not validated and fails the validation (see DepthExceededResult).
-        //The walk calls itself once for each level, and a StackOverflowException cannot be caught.
+        //shortest path: each property step and each collection index is one level, and the root is level 0.
+        //An object at a deeper level is not validated and fails the validation (see GraphWalk.Walk).
+        //The limit stops a computed property that builds a new object on each read, which never ends otherwise.
         //128 is twice the depth that System.Text.Json allows by default, which counts nearly the same way.
         internal const int MaxDepth = 128;
 
@@ -111,7 +112,7 @@ namespace RecursiveDataAnnotationsValidation
         //serviceProvider is the caller's ValidationContext, or null when the caller passed only items.
         //Validator passes the outer context as the service provider of each context it builds, so
         //GetService on a context built here reaches the caller's provider the same way.
-        private bool TryValidateGraph(
+        private static bool TryValidateGraph(
             object obj,
             List<ValidationResult> validationResults,
             IServiceProvider serviceProvider,
@@ -121,311 +122,376 @@ namespace RecursiveDataAnnotationsValidation
             //like Validator.TryValidateObject, a null list means the caller wants only the return value
             validationResults = validationResults ?? new List<ValidationResult>();
 
-            return TryValidateObjectRecursive(
-                obj,
-                validationResults,
-                new HashSet<object>(ObjectReferenceComparer.Instance),
-                new List<object>(),
-                serviceProvider,
-                validationContextItems,
-                0
-                );
+            return new GraphWalk(validationResults, serviceProvider, validationContextItems).Run(obj);
         }
 
-        /// <summary>
-        /// Validates the specified object and adds any validation results to the provided collection.
-        /// </summary>
-        /// <param name="obj">The object to validate.</param>
-        /// <param name="validationResults">A collection to receive any validation errors.</param>
-        /// <param name="serviceProvider">Service provider for the validation context, or null.</param>
-        /// <param name="validationContextItems">Optional context items for the validation context.</param>
-        /// <returns>True if the object is valid; otherwise, false.</returns>
-        private bool TryValidateObject(
-            object obj, 
-            ICollection<ValidationResult> validationResults, 
-            IServiceProvider serviceProvider,
-            IDictionary<object, object> validationContextItems
-            )
+        //One walk over an object graph, breadth first. The walk keeps its work in a queue and calls
+        //nothing recursively, so the depth of a graph does not use the stack.
+        //
+        //A level is one segment of a path: a property or an index. Each step from an object to the
+        //next one is one level, so the queue holds the levels in order, and the first path that
+        //reaches an object is the shortest one. The walk marks an object when it queues it, and
+        //drops every later path to it. The depth of an object is therefore true.
+        //
+        //A property that holds a collection is a step of its own: the collection waits in the queue
+        //one level below its object, and its items are queued one level below that. Without it, an
+        //item would be two levels away from its object and the queue would not be in order.
+        private sealed class GraphWalk
         {
-            return Validator.TryValidateObject(
-                obj, 
-                new ValidationContext(
-                    obj, 
-                    serviceProvider,
-                    validationContextItems
-                ), 
-                validationResults, 
-                true
-            );
-        }
+            private readonly Queue<WorkItem> queue = new Queue<WorkItem>();
 
-        //True when obj Equals an object on the path whose type is obj's type, a base of it, or derived
-        //from it. Related types cover a computed property that alternates between a type and its
-        //subclass. Unrelated types are not compared, so an Equals that casts without a type check
-        //does not throw.
-        private static bool EqualsAnAncestor(object obj, Type type, List<object> equalityPath)
-        {
-            foreach (var ancestor in equalityPath)
+            //every object that was queued, compared by reference
+            private readonly HashSet<object> queuedObjects = new HashSet<object>(ObjectReferenceComparer.Instance);
+
+            private readonly ICollection<ValidationResult> validationResults;
+            private readonly IServiceProvider serviceProvider;
+            private readonly IDictionary<object, object> validationContextItems;
+
+            public GraphWalk(
+                ICollection<ValidationResult> validationResults,
+                IServiceProvider serviceProvider,
+                IDictionary<object, object> validationContextItems
+                )
             {
-                var ancestorType = ancestor.GetType();
-                if ((ancestorType.IsAssignableFrom(type) || type.IsAssignableFrom(ancestorType))
-                    && obj.Equals(ancestor))
+                this.validationResults = validationResults;
+                this.serviceProvider = serviceProvider;
+                this.validationContextItems = validationContextItems;
+            }
+
+            public bool Run(object root)
+            {
+                //an object of a leaf type can never produce a result (see IsLeafType)
+                if (root.GetType().IsLeafType())
                 {
                     return true;
                 }
+
+                queuedObjects.Add(root);
+                queue.Enqueue(new WorkItem(root, null, 0, null, false, false));
+
+                var valid = true;
+                while (queue.Count > 0)
+                {
+                    var item = queue.Dequeue();
+                    if (item.IsCollectionOfProperty)
+                    {
+                        EnqueueItems((IEnumerable)item.Value, item.Path, item.Depth + 1, item.Ancestors);
+                    }
+                    else if (!Walk(item))
+                    {
+                        valid = false;
+                    }
+                }
+
+                return valid;
             }
 
-            return false;
-        }
-
-        //validatedObjects holds every object visited so far, compared by reference.
-        //equalityPath holds the objects on the path from the root to this object whose type overrides Equals.
-        //depth is the number of segments in the path of obj, which is 0 for the root object.
-        //enumerateItems is true for an item of a collection. If the item is itself a collection, its
-        //items are validated too. A collection that a property holds is enumerated by the caller, and
-        //the root object is never enumerated.
-        private bool TryValidateObjectRecursive(
-            object obj,
-            ICollection<ValidationResult> validationResults,
-            ISet<object> validatedObjects,
-            List<object> equalityPath,
-            IServiceProvider serviceProvider,
-            IDictionary<object, object> validationContextItems,
-            int depth,
-            bool enumerateItems = false
-            )
-        {
-            var type = obj.GetType();
-
-            //an object of a leaf type can never produce a result, such as a boxed int in an object[] (see IsLeafType)
-            if (type.IsLeafType())
+            //Queues an object that was found at the end of a path. The path is the parent path plus a
+            //property name, or plus an index if the name is null. A path is a chain of steps, and it is
+            //turned into a string only for an object that has a result.
+            private void Enqueue(
+                object value,
+                PathStep parent,
+                string propertyName,
+                int index,
+                int depth,
+                EqualsAncestor ancestors,
+                bool enumerateItems
+                )
             {
-                return true;
+                //an object of a leaf type can never produce a result, such as a boxed int in an object[] (see IsLeafType)
+                //An object that was queued before is skipped, which also ends a cycle in the graph.
+                if (value.GetType().IsLeafType() || !queuedObjects.Add(value))
+                {
+                    return;
+                }
+
+                queue.Enqueue(new WorkItem(
+                    value,
+                    new PathStep(parent, propertyName, index),
+                    depth,
+                    ancestors,
+                    enumerateItems,
+                    false
+                    ));
             }
 
-            //short-circuit to avoid infinite loops on cyclical object graphs
-            if (validatedObjects.Contains(obj))
+            //Queues each item of a collection. The path of an item is the path of the collection
+            //plus its index, and its depth is itemDepth.
+            private void EnqueueItems(
+                IEnumerable items,
+                PathStep collectionPath,
+                int itemDepth,
+                EqualsAncestor ancestors
+                )
             {
-                return true;
+                var arrayIndex = -1;
+                foreach (var item in items)
+                {
+                    arrayIndex++;
+
+                    //NOTE: Possibly should have a separate case for Dictionary which reports on the key
+
+                    if (item == null) continue;
+                    Enqueue(item, collectionPath, null, arrayIndex, itemDepth, ancestors, true);
+                }
             }
 
-            //a computed property can return a new, equal object on each read, such as
-            //`Money Zero => new Money(0)`, so references never repeat and the walk would not end.
-            //Stop at an object that Equals an object on its own path: validate its own attributes,
-            //so a child that Equals its parent by Id is still checked, but don't walk into it.
-            var overridesEquals = type.OverridesEquals();
-            if (overridesEquals && EqualsAnAncestor(obj, type, equalityPath))
+            //Walks an object: validates it, then queues what it holds. Returns false if the object has a result.
+            private bool Walk(WorkItem item)
             {
-                validatedObjects.Add(obj);
-                return TryValidateObject(obj, validationResults, serviceProvider, validationContextItems);
+                var obj = item.Value;
+                var type = obj.GetType();
+
+                //a computed property can return a new, equal object on each read, such as
+                //`Money Zero => new Money(0)`, so references never repeat and the walk would not end.
+                //Stop at an object that Equals an object on its own path: validate its own attributes,
+                //so a child that Equals its parent by Id is still checked, but don't walk into it.
+                var overridesEquals = type.OverridesEquals();
+                if (overridesEquals && EqualsAnAncestor(obj, type, item.Ancestors))
+                {
+                    return Validate(item);
+                }
+
+                //An object this deep is not validated and not walked, and the validation fails:
+                //nobody has checked it, so it must not pass. The path to it is the shortest one,
+                //so the depth is true, and the object gets one error, and not one for each path.
+                //A leaf, an object seen before and an object that Equals an ancestor all returned
+                //above, because none of them walks any further.
+                if (item.Depth > MaxDepth)
+                {
+                    validationResults.Add(new ValidationResult(
+                        "The object is nested more than " + MaxDepth + " levels deep and was not validated.",
+                        new[] { item.Path.ToString() }
+                        ));
+                    return false;
+                }
+
+                var ancestors = overridesEquals ? new EqualsAncestor(obj, item.Ancestors) : item.Ancestors;
+
+                var result = Validate(item);
+
+                //An item that is a collection is validated as an object above, so its own attributes run.
+                //Then its items are queued, before its properties. An object that the collection also
+                //returns from a property, such as Array.SyncRoot, is then reported at its index
+                //(Value[0][0]) and not through the property (Value[0].SyncRoot[0]).
+                //A collection of leaf types is skipped, like a collection that a property holds. A default
+                //struct, such as an ImmutableArray nobody set, is skipped: it holds nothing and enumerating it throws.
+                var enumeratedItems = false;
+                if (item.EnumerateItems
+                    && obj is IEnumerable items
+                    && !type.IsCollectionOfLeafType()
+                    && !obj.IsDefaultStruct())
+                {
+                    enumeratedItems = true;
+                    EnqueueItems(items, item.Path, item.Depth + 1, ancestors);
+                }
+
+                //IsWalked leaves out properties declared by framework types that throw or never end when
+                //read, such as Uri.Segments on a relative Uri, DirectoryInfo.Root, or the properties of
+                //a Thread or Process read from the wrong thread or process (see IsUnsafeToWalk)
+                var properties = type.GetProperties().Where(prop => prop.IsWalked()).ToList();
+
+                foreach (var property in properties)
+                {
+                    var value = property.GetValue(obj, null);
+
+                    switch (value)
+                    {
+                        case null:
+                            continue;
+
+                        //items of a leaf type can never produce a result, so don't enumerate them (see IsLeafType)
+                        case IEnumerable _ when value.GetType().IsCollectionOfLeafType():
+                            continue;
+
+                        //a struct collection nobody set, such as a default ImmutableArray, holds nothing
+                        //and enumerating it throws, so skip it as an item is skipped. Only for a property
+                        //declared as a struct: a property declared as an interface or object was always
+                        //enumerated, and a boxed struct in one must not start to be skipped.
+                        case IEnumerable _ when property.PropertyType.IsValueType && value.IsDefaultStruct():
+                            continue;
+
+                        case IEnumerable asEnumerable:
+                            //an item that was enumerated above can return itself from a property, such as
+                            //Array.SyncRoot, and enumerating it a second time would find nothing new
+                            if (enumeratedItems && ReferenceEquals(value, obj)) continue;
+
+                            //the property is one level and the index of each item is another
+                            queue.Enqueue(new WorkItem(
+                                asEnumerable,
+                                new PathStep(item.Path, property.Name, -1),
+                                item.Depth + 1,
+                                ancestors,
+                                false,
+                                true
+                                ));
+                            break;
+
+                        default:
+                            Enqueue(value, item.Path, property.Name, -1, item.Depth + 1, ancestors, false);
+                            break;
+                    }
+                }
+
+                return result;
             }
 
-            //an object this deep is not validated and not walked, and the validation fails: nobody
-            //has checked it, so it must not pass. A leaf, an object seen before and an object that
-            //Equals an ancestor all returned above, because none of them walks any further.
-            if (depth > MaxDepth)
+            //Validates the attributes and IValidatableObject of one object. A result of the root
+            //object goes to the caller's list as it is. A result of any other object gets its member
+            //names prefixed by the path of the object, so the names are the full path from the root.
+            //An object that has no path has no member names to prefix, and its result has none either.
+            private bool Validate(WorkItem item)
             {
-                validationResults.Add(new DepthExceededResult());
+                if (item.Path == null)
+                {
+                    return TryValidateObject(item.Value, validationResults);
+                }
+
+                var results = new List<ValidationResult>();
+                if (TryValidateObject(item.Value, results))
+                {
+                    return true;
+                }
+
+                var path = item.Path.ToString();
+                foreach (var validationResult in results)
+                {
+                    var memberNames = validationResult.MemberNames.Select(x => path + "." + x).ToList();
+                    validationResults.Add(new ValidationResult(validationResult.ErrorMessage, memberNames));
+                }
+
                 return false;
             }
 
-            validatedObjects.Add(obj);
-            if (overridesEquals) equalityPath.Add(obj);
-
-            var result = TryValidateObject(obj, validationResults, serviceProvider, validationContextItems);
-
-            //An item that is a collection is validated as an object above, so its own attributes run.
-            //Then its items are validated, before its properties are walked. An object that the
-            //collection also returns from a property, such as Array.SyncRoot, is then reported at its
-            //index (Value[0][0]) and not through the property (Value[0].SyncRoot[0]).
-            //A collection of leaf types is skipped, like a collection that a property holds. A default
-            //struct, such as an ImmutableArray nobody set, is skipped: it holds nothing and enumerating it throws.
-            var enumeratedItems = false;
-            if (enumerateItems
-                && obj is IEnumerable items
-                && !type.IsCollectionOfLeafType()
-                && !obj.IsDefaultStruct())
+            private bool TryValidateObject(object obj, ICollection<ValidationResult> results)
             {
-                enumeratedItems = true;
-                if (!TryValidateItems(
-                    items,
-                    "",
-                    validationResults,
-                    validatedObjects,
-                    equalityPath,
-                    serviceProvider,
-                    validationContextItems,
-                    depth
-                    ))
-                {
-                    result = false;
-                }
+                return Validator.TryValidateObject(
+                    obj,
+                    new ValidationContext(
+                        obj,
+                        serviceProvider,
+                        validationContextItems
+                    ),
+                    results,
+                    true
+                );
             }
 
-            //IsWalked leaves out properties declared by framework types that throw or never end when
-            //read, such as Uri.Segments on a relative Uri, DirectoryInfo.Root, or the properties of
-            //a Thread or Process read from the wrong thread or process (see IsUnsafeToWalk)
-            var properties = type.GetProperties().Where(prop => prop.IsWalked()).ToList();
-
-            foreach (var property in properties)
+            //True when obj Equals an object on the path whose type is obj's type, a base of it, or derived
+            //from it. Related types cover a computed property that alternates between a type and its
+            //subclass. Unrelated types are not compared, so an Equals that casts without a type check
+            //does not throw.
+            private static bool EqualsAnAncestor(object obj, Type type, EqualsAncestor ancestors)
             {
-                var value = property.GetValue(obj, null);
-
-                List<ValidationResult> nestedResults;
-                switch (value)
+                for (var ancestor = ancestors; ancestor != null; ancestor = ancestor.Parent)
                 {
-                    case null:
-                        continue;
-
-                    //items of a leaf type can never produce a result, so don't enumerate them (see IsLeafType)
-                    case IEnumerable _ when value.GetType().IsCollectionOfLeafType():
-                        continue;
-
-                    //a struct collection nobody set, such as a default ImmutableArray, holds nothing
-                    //and enumerating it throws, so skip it as an item is skipped. Only for a property
-                    //declared as a struct: a property declared as an interface or object was always
-                    //enumerated, and a boxed struct in one must not start to be skipped.
-                    case IEnumerable _ when property.PropertyType.IsValueType && value.IsDefaultStruct():
-                        continue;
-
-                    case IEnumerable asEnumerable:
-                        //an item that was enumerated above can return itself from a property, such as
-                        //Array.SyncRoot, and enumerating it a second time would find nothing new
-                        if (enumeratedItems && ReferenceEquals(value, obj)) continue;
-
-                        //the property is one level and the index of each item is another
-                        if (!TryValidateItems(
-                            asEnumerable,
-                            property.Name,
-                            validationResults,
-                            validatedObjects,
-                            equalityPath,
-                            serviceProvider,
-                            validationContextItems,
-                            depth + 1
-                            ))
-                        {
-                            result = false;
-                        }
-                        break;
-
-                    default:
-                        nestedResults = new List<ValidationResult>();
-                        if (!TryValidateObjectRecursive(
-                            value, 
-                            nestedResults, 
-                            validatedObjects, 
-                            equalityPath,
-                            serviceProvider,
-                            validationContextItems,
-                            depth + 1
-                            ))
-                        {
-                            result = false;
-                            foreach (var validationResult in nestedResults)
-                            {
-                                var property1 = property;
-
-                                //an object that is too deep has no member names, and its path is the property
-                                var memberNames = validationResult is DepthExceededResult
-                                    ? new[] { property1.Name }
-                                    : validationResult.MemberNames.Select(x => property1.Name + '.' + x);
-                                validationResults.Add(new ValidationResult(validationResult.ErrorMessage, memberNames));
-                            }
-                        }
-                        break;
-                }
-            }
-
-            if (overridesEquals) equalityPath.RemoveAt(equalityPath.Count - 1);
-
-            return result;
-        }
-        
-        //Validates each item of a collection. The result of an item is added to validationResults with
-        //its member names prefixed by the property name, if there is one, and the index of the item.
-        //collectionDepth is the depth of the collection, or of the property that holds it, so each
-        //item is one level deeper.
-        private bool TryValidateItems(
-            IEnumerable items,
-            string propertyName,
-            ICollection<ValidationResult> validationResults,
-            ISet<object> validatedObjects,
-            List<object> equalityPath,
-            IServiceProvider serviceProvider,
-            IDictionary<object, object> validationContextItems,
-            int collectionDepth
-            )
-        {
-            var result = true;
-            var arrayIndex = -1;
-            foreach (var item in items)
-            {
-                arrayIndex++;
-
-                //NOTE: Possibly should have a separate case for Dictionary which reports on the key
-
-                if (item == null) continue;
-                var nestedResults = new List<ValidationResult>();
-                if (!TryValidateObjectRecursive(
-                    item,
-                    nestedResults,
-                    validatedObjects,
-                    equalityPath,
-                    serviceProvider,
-                    validationContextItems,
-                    collectionDepth + 1,
-                    enumerateItems: true
-                    ))
-                {
-                    result = false;
-                    var index = arrayIndex;
-                    foreach (var validationResult in nestedResults)
+                    var ancestorType = ancestor.Value.GetType();
+                    if ((ancestorType.IsAssignableFrom(type) || type.IsAssignableFrom(ancestorType))
+                        && obj.Equals(ancestor.Value))
                     {
-                        //the member names of an item that is a collection start with the index of its own items
-                        var startsWithIndex = validationResult is ItemOfCollectionResult;
-                        //an item that is too deep has no member names, and its path is the index
-                        var memberNames = validationResult is DepthExceededResult
-                            ? new List<string> { propertyName + "[" + index + "]" }
-                            : validationResult.MemberNames
-                                .Select(x => propertyName + "[" + index + "]" + (startsWithIndex ? "" : ".") + x)
-                                .ToList();
-
-                        //With no property name, the result is for an item that is a collection: the
-                        //caller puts its own index in front of these names, with no dot.
-                        validationResults.Add(propertyName.Length == 0
-                            ? new ItemOfCollectionResult(validationResult.ErrorMessage, memberNames)
-                            : new ValidationResult(validationResult.ErrorMessage, memberNames));
+                        return true;
                     }
                 }
-            }
 
-            return result;
-        }
-
-        //The result for an object that is deeper than MaxDepth. It has no member names at first. The
-        //caller that knows how it reached the object gives it that path as its only member name, and
-        //every caller above it prefixes the name like any other, so the final name is the full path.
-        private sealed class DepthExceededResult : ValidationResult
-        {
-            public DepthExceededResult()
-                : base("The object is nested more than " + MaxDepth + " levels deep and was not validated.")
-            {
+                return false;
             }
         }
 
-        //A result whose member names start with the index of an item, such as "[0].Name", and not
-        //with a property name. It marks the names that the caller must join without a dot.
-        //The names the items choose are not looked at, so a name that starts with "[", or a null
-        //name, is joined like any other name. A result of this type never reaches the caller,
-        //because the object passed to the validator is not enumerated, and every other result
-        //is rebuilt with a property name in front.
-        private sealed class ItemOfCollectionResult : ValidationResult
+        //An object that waits in the queue, and how the walk got to it.
+        //Path is null for the object that the caller passed in.
+        //IsCollectionOfProperty is true for the collection that a property holds. It is not validated
+        //as an object. Its items are queued when it comes out of the queue.
+        //Ancestors are the objects on the path whose type overrides Equals, the nearest one first.
+        //EnumerateItems is true for an item of a collection. If the item is itself a collection, its
+        //items are walked too. A collection that a property holds is enumerated by the object that
+        //holds it, and the root object is never enumerated.
+        private sealed class WorkItem
         {
-            public ItemOfCollectionResult(string errorMessage, IEnumerable<string> memberNames)
-                : base(errorMessage, memberNames)
+            public WorkItem(
+                object value,
+                PathStep path,
+                int depth,
+                EqualsAncestor ancestors,
+                bool enumerateItems,
+                bool isCollectionOfProperty
+                )
             {
+                Value = value;
+                Path = path;
+                Depth = depth;
+                Ancestors = ancestors;
+                EnumerateItems = enumerateItems;
+                IsCollectionOfProperty = isCollectionOfProperty;
             }
+
+            public object Value { get; }
+            public PathStep Path { get; }
+            public int Depth { get; }
+            public EqualsAncestor Ancestors { get; }
+            public bool EnumerateItems { get; }
+            public bool IsCollectionOfProperty { get; }
+        }
+
+        //The last segment of a path and a link to the rest of it: a property name, or an index if
+        //the name is null. Many objects share the first part of their paths, so the string of a
+        //path is built only when an object has a result.
+        private sealed class PathStep
+        {
+            private readonly PathStep parent;
+            private readonly string propertyName;
+            private readonly int index;
+
+            public PathStep(PathStep parent, string propertyName, int index)
+            {
+                this.parent = parent;
+                this.propertyName = propertyName;
+                this.index = index;
+            }
+
+            //"Orders[0].Lines[1].Product": a name after the first one is joined with a dot, and an index with none
+            public override string ToString()
+            {
+                var steps = new List<PathStep>();
+                for (var step = this; step != null; step = step.parent)
+                {
+                    steps.Add(step);
+                }
+
+                var path = new StringBuilder();
+                for (var i = steps.Count - 1; i >= 0; i--)
+                {
+                    var step = steps[i];
+                    if (step.propertyName == null)
+                    {
+                        path.Append('[').Append(step.index).Append(']');
+                        continue;
+                    }
+
+                    if (path.Length > 0)
+                    {
+                        path.Append('.');
+                    }
+
+                    path.Append(step.propertyName);
+                }
+
+                return path.ToString();
+            }
+        }
+
+        //A link in the chain of the objects on a path whose type overrides Equals. The chain
+        //starts at the nearest one, so an object can be compared with its ancestors only.
+        private sealed class EqualsAncestor
+        {
+            public EqualsAncestor(object value, EqualsAncestor parent)
+            {
+                Value = value;
+                Parent = parent;
+            }
+
+            public object Value { get; }
+            public EqualsAncestor Parent { get; }
         }
 
         /* Note 1:

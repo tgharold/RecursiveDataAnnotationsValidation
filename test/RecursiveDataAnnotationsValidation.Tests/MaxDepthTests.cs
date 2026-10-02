@@ -12,12 +12,20 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// <summary>
     /// The maximum depth of the object graph is 128.
     ///
-    /// The walk calls itself once for each level, so a deep graph is a deep call stack. .NET cannot
-    /// catch a StackOverflowException (https://learn.microsoft.com/dotnet/api/system.stackoverflowexception),
-    /// so the process ends. A graph this deep is not a real model. It points to a cycle that the
-    /// validator cannot see, such as a computed property that returns a new object on each read,
-    /// or to a graph that was built from untrusted input. The validator therefore fails the
-    /// validation and does not walk any further.
+    /// A graph this deep is not a real model. It points to a cycle that the validator cannot see,
+    /// such as a computed property that returns a new object on each read, or to a graph that was
+    /// built from untrusted input. Without a limit, such a walk never ends. The validator therefore
+    /// fails the validation and does not walk any further.
+    ///
+    /// Up to 2.3 the walk called itself once for each level, so a deep graph was a deep call stack.
+    /// .NET cannot catch a StackOverflowException
+    /// (https://learn.microsoft.com/dotnet/api/system.stackoverflowexception), so the process ended.
+    /// Since 3.0 the walk is breadth first and keeps its work in a queue (see BreadthFirstWalkTests),
+    /// so the stack no longer limits the depth. The tests below still use short graphs, so they
+    /// also run against the older walk without ending the test run.
+    ///
+    /// The depth of an object is the length of the shortest path to it. An object that other,
+    /// longer paths reach is not too deep.
     ///
     /// The depth of an object is the number of segments in its path. In "Value[0][0].Name",
     /// Value is level 1, the first [0] is level 2, the second [0] is level 3 and Name is level 4.
@@ -225,8 +233,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
             /// <summary>
             /// Before the limit, a chain of about 1,300 objects was the most that a 1 MB stack, the
             /// default on Windows, could walk. A chain of 600 is well below that, so this test cannot
-            /// end the test run when the limit is missing, and it still shows that the validator now
-            /// fails the validation at level 129. A chain of 100,000 would end the process.
+            /// end the test run when the limit is missing, and it still shows that the validator
+            /// fails the validation at level 129.
             /// </summary>
             [Fact]
             public void A_chain_of_600_objects_fails_on_a_small_stack()
