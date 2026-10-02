@@ -17,7 +17,7 @@ env:
 
 jobs:
   # Cheap checks first, so a bad tag fails before the test matrix uses any runners.
-  # The build job repeats both checks right before it publishes.
+  # The draft-release and publish jobs repeat the checks they need.
   verify-tag:
     runs-on: ubuntu-latest
     permissions:
@@ -52,14 +52,14 @@ jobs:
     permissions:
       contents: read
 
-  build:
+  # Everything in this job can be undone: it builds the package and creates a draft
+  # GitHub release. Delete the draft to back out. The irreversible steps are in the
+  # publish job, which waits for approval.
+  draft-release:
     needs: test
     runs-on: ubuntu-latest
-    # Publishing needs approval from a required reviewer and only runs for v* tags.
-    environment: nuget
     permissions:
-      contents: write
-      id-token: write # Needed for NuGet Trusted Publishing (OIDC).
+      contents: write # Needed to create the draft release and attach assets.
 
     steps:
 
@@ -131,8 +131,9 @@ jobs:
 
       # Uses the preinstalled GitHub CLI. The old actions/create-release and
       # actions/upload-release-asset actions are archived and no longer maintained.
-      # The release stays a draft until the last step, because a published release is
-      # immutable and cannot receive assets. A failed run leaves a draft that can be deleted.
+      # The release stays a draft until the publish job, because a published release is
+      # immutable and cannot receive assets. A failed or rejected run leaves a draft that
+      # can be deleted.
       # Only tags with a suffix, such as v1.5.0-alpha.1, are prereleases. GitHub never marks
       # a prerelease as Latest, so stable tags must not be prereleases.
       - name: Create Release
@@ -185,6 +186,47 @@ jobs:
           "artifacts/${PROJECT}.${RELEASE_VERSION}.nupkg"
           "artifacts/${PROJECT}.${RELEASE_VERSION}.snupkg"
 
+  # The irreversible steps: the nuget.org push cannot be undone, and publishing the
+  # release makes it and its tag immutable. This job waits for approval from a required
+  # reviewer of the nuget environment, which only accepts v* tags. By then the draft
+  # release and its packages exist, so review them before you approve.
+  # The nuget.org Trusted Publishing policy names this workflow file and the nuget
+  # environment, so keep both on this job.
+  publish:
+    needs: draft-release
+    runs-on: ubuntu-latest
+    environment: nuget
+    permissions:
+      contents: write # Needed to publish the draft release.
+      id-token: write # Needed for NuGet Trusted Publishing (OIDC).
+
+    steps:
+
+      # Tag names can contain shell metacharacters, so only accept vMAJOR.MINOR.PATCH[-suffix].
+      - name: Get Release Version
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag '$GITHUB_REF_NAME' does not look like vMAJOR.MINOR.PATCH[-suffix]"
+            exit 1
+          fi
+          echo "RELEASE_TAG=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          echo "RELEASE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      # The same files the draft-release job attached to the draft release.
+      - name: Download artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: ${{ env.PROJECT }}.artifacts.${{ env.RELEASE_VERSION }}
+          path: artifacts
+
+      - name: Inspect artifacts directory
+        run: ls -l artifacts/
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 8.0.x
+
       # Trusted Publishing: exchanges the GitHub OIDC token for a short-lived NuGet API key.
       - name: NuGet login
         id: nuget-login
@@ -200,7 +242,9 @@ jobs:
           -k "$NUGET_API_KEY"
           -s https://api.nuget.org/v3/index.json
 
+      # This job has no checkout, so tell gh which repository to use.
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: gh release edit "$RELEASE_TAG" --draft=false
