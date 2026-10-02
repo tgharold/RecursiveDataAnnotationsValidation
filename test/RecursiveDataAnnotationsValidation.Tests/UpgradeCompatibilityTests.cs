@@ -33,6 +33,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// - The order of the results, and the path of an object that two routes reach, which 3.0
     ///   changed with its breadth-first walk (BreadthFirstWalkTests).
     /// - A struct held in a property, which 3.0 walks (OddShapeTests.StructProperties).
+    /// - A dictionary value, which 3.0 reports by its key (DictionaryKeyPathTests).
     ///
     /// The messages are the framework's default English messages, or a custom ErrorMessage where
     /// .NET Framework and .NET might word a default differently.
@@ -888,22 +889,6 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
                 Assert.False(Validate(new Holder { Items = stack }, out var results));
                 Assert.Equal(ResultText.Expect("Items[2].Name | The Name field is required."), results);
-            }
-
-            /// <summary>
-            /// A dictionary is a collection of KeyValuePair items, so a value is reached through
-            /// ".Value", and the index is the position in enumeration order, not the key. A
-            /// SortedDictionary enumerates in key order.
-            /// See: https://learn.microsoft.com/dotnet/api/system.collections.generic.keyvaluepair-2
-            /// See: https://learn.microsoft.com/dotnet/api/system.collections.generic.sorteddictionary-2
-            /// </summary>
-            [Fact]
-            public void Dictionary_value_is_reached_through_Value()
-            {
-                var map = new SortedDictionary<string, Leaf> { ["b"] = Bad(), ["a"] = Good(), ["c"] = Good() };
-
-                Assert.False(Validate(new Holder { Items = map }, out var results));
-                Assert.Equal(ResultText.Expect("Items[1].Value.Name | The Name field is required."), results);
             }
 
             [Fact]

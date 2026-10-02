@@ -481,8 +481,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
         }
 
 #if NET8_0_OR_GREATER
-        // A dictionary value that is a struct collection. The KeyValuePair item of the dictionary is
-        // walked, and so is the struct collection that its Value property holds.
+        // A dictionary value that is a struct collection. The value is reported by its key, and the
+        // struct collection is enumerated.
         [Fact]
         public void Dictionary_value_that_is_a_struct_collection_is_validated()
         {
@@ -492,7 +492,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             });
 
             Assert.False(valid);
-            Assert.Equal(ResultText.Expect("Value[0].Value[0].Name" + NameRequired), errors);
+            Assert.Equal(ResultText.Expect("Value[a][0].Name" + NameRequired), errors);
         }
 
         [Fact]

@@ -691,8 +691,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// Rejected fix: skipping every type in a System.* or Microsoft.* namespace. User objects
         /// inside framework wrappers are validated, and that rule would silently stop it.
         /// A Tuple&lt;Child, int&gt; property reports "Pair.Item1.Name". A Dictionary&lt;string, Child&gt;
-        /// reports "Map[0].Value.Name", because each item is a boxed KeyValuePair, which lives in
-        /// System.Collections.Generic.
+        /// reports "Map[a].Name": each item is a boxed KeyValuePair, which lives in
+        /// System.Collections.Generic, and its value is reported by its key.
         /// Fix: a narrow deny list (IsUnsafeToWalk). The walk skips each property declared by a
         /// denied type, or by a framework type derived from one, such as Type.DeclaringMethod or
         /// Uri.Segments. The object itself is still validated, and a user's subclass still has the
@@ -1042,7 +1042,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 public Dictionary<string, Child> Map { get; set; }
             }
 
-            // Guard. Each dictionary item is a boxed KeyValuePair, and its Value is still walked.
+            // Guard. Each dictionary item is a boxed KeyValuePair, and its value is still validated.
             [Fact]
             public void Dictionary_of_objects_is_still_validated()
             {
@@ -1052,7 +1052,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 var valid = new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results);
 
                 Assert.False(valid);
-                Assert.Contains(results, r => r.MemberNames.Contains("Map[0].Value.Name"));
+                Assert.Contains(results, r => r.MemberNames.Contains("Map[a].Name"));
             }
 
             // Guard. Items of a reference type can carry attributes, so they are still validated.
