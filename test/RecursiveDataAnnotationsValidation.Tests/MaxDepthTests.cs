@@ -24,10 +24,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// so the stack no longer limits the depth. The tests below still use short graphs, so they
     /// also run against the older walk without ending the test run.
     ///
-    /// The depth of an object is the length of the shortest path to it. An object that other,
-    /// longer paths reach is not too deep.
-    ///
-    /// The depth of an object is the number of segments in its path. In "Value[0][0].Name",
+    /// The depth of an object is the number of segments in the shortest path to it. An object that
+    /// other, longer paths reach is not too deep. In "Value[0][0].Name",
     /// Value is level 1, the first [0] is level 2, the second [0] is level 3 and Name is level 4.
     /// Each property step and each collection index counts as one level. System.Text.Json counts
     /// nearly the same way, where each object and each array is one level, and its limit is 64
