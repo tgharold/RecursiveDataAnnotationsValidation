@@ -123,6 +123,10 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
         [Theory]
         [InlineData(typeof(byte[]))]
         [InlineData(typeof(int[,]))]
+        // An int[] is a sealed collection of ints. Its only property of a reference type,
+        // Array.SyncRoot, is declared by a framework type, so it is not walked, and int[] is a
+        // leaf type. A jagged array of ints holds nothing to validate.
+        [InlineData(typeof(int[][]))]
         [InlineData(typeof(int?[]))]
         [InlineData(typeof(List<int>))]
         [InlineData(typeof(HashSet<Guid>))]
@@ -156,7 +160,6 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
         [Theory]
         [InlineData(typeof(Child[]))]
         [InlineData(typeof(object[]))]
-        [InlineData(typeof(int[][]))]
         [InlineData(typeof(List<Child>))]
         [InlineData(typeof(Dictionary<string, Child>))]
         [InlineData(typeof(Dictionary<Child, int>))]

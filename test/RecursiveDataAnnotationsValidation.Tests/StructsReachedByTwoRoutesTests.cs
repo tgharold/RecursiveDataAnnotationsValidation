@@ -19,10 +19,12 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// See: https://learn.microsoft.com/dotnet/csharp/programming-guide/types/boxing-and-unboxing
     ///
     /// How 3.0 avoids most of the routes:
-    /// - Each collection is enumerated once. The collection itself is an object with an identity,
-    ///   so an array that two properties hold yields its structs once, at the shortest path. A
-    ///   collection that a second route reaches as an item is still validated as an object there,
-    ///   so its own attributes run, but it is not enumerated again.
+    /// - The collection itself is an object with an identity. The validator remembers each
+    ///   collection it enumerated. A second route enumerates it again, so an item that was added in
+    ///   the meantime is found, but skips its struct items, which the first route reported. So an
+    ///   array that two properties hold yields its structs once, at the shortest path. A collection
+    ///   that a second route reaches as an item is still validated as an object there, so its own
+    ///   attributes run.
     /// - A collection that is an item or the root object is enumerated, and the properties that a
     ///   framework type declares on it are not walked, as for a collection that a property holds.
     ///   Those properties repeat the items: ArraySegment&lt;T&gt;.Array, LinkedList&lt;T&gt;.First,
@@ -120,11 +122,11 @@ namespace RecursiveDataAnnotationsValidation.Tests
             Assert.Equal(ResultText.Expect("First[0].Text" + TextRequired), errors);
         }
 
-        // Spec. The list is reached through Lines and as an item of Items. It is enumerated once,
-        // through the shorter path. As an item it is still validated as an object, so the Cursor
-        // error is reported there.
+        // Spec. The list is reached through Lines and as an item of Items. Its struct is reported
+        // through the shorter path. As an item the list is still validated as an object, so the
+        // Cursor error is reported there.
         [Fact]
-        public void Collection_in_a_property_and_in_an_item_is_enumerated_once_and_validated()
+        public void Collection_in_a_property_and_in_an_item_reports_its_struct_once()
         {
             var lines = new PagedLines { new Line() };
 
