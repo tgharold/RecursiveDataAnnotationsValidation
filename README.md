@@ -35,6 +35,16 @@ The [`[SkipRecursiveValidation]`](https://github.com/tgharold/RecursiveDataAnnot
 - For a type that does not override `Equals`, mark such a property with `[SkipRecursiveValidation]`. Otherwise the walk overflows the stack, which ends the process.
 - Two records that reference each other can also overflow the stack. A record's generated `Equals` compares properties in declaration order, so it follows the reference forever if it reaches it before a property that differs. This happens when the records have equal values, or when the reference is declared first. On .NET Framework it always happens, because the framework's `Validator` calls the record's generated `GetHashCode`, which follows the reference too. Marking the reference with `[SkipRecursiveValidation]` avoids the walk, but not the `GetHashCode` call on .NET Framework. There, override `GetHashCode` so it does not include the reference.
 
+### Collections
+
+- The items of a collection that a property holds are validated. The error names the property and the index of the item: `Items[1].Name`.
+- An item that is itself a collection is validated too, at each level: `Matrix[0][2].Name`. This holds for lists, arrays, sets, dictionaries and your own collection types. A dictionary is enumerated as `KeyValuePair` items, so its values are reported as `Map[0].Value.Name`.
+- An item that is a collection is validated as an object first, so its own attributes and `IValidatableObject.Validate` run, then its items.
+- A collection of simple values, such as `List<int>` or `string[]`, is not enumerated, because it cannot hold an invalid object.
+- A collection that you pass to the validator as the root object is not enumerated. Wrap it in an object with a property.
+- A collection that is a struct, such as `ImmutableArray<T>`, is validated when it is an item of another collection, but not when a property holds it. The validator only reads properties of reference types.
+- The validator does not catch exceptions. If a collection throws when it is enumerated, the exception reaches your code. A default `ImmutableArray<T>` item is skipped, because it holds nothing.
+
 ### Framework types that are not walked
 
 The validator does not walk the properties that these framework types declare: `Type` and other `MemberInfo` types, `Assembly`, `Module`, delegates, `Uri`, `FileSystemInfo`, which covers `DirectoryInfo` and `FileInfo`, `Thread`, and `Process`. Reading those properties throws or never ends, for example `Uri.Segments` on a relative `Uri`, and they carry no validation attributes.

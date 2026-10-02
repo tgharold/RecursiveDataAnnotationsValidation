@@ -8,6 +8,18 @@ Breaking changes are marked **BREAKING**.
 
 ## Unreleased
 
+### Fixed
+
+- Objects inside an item that is itself a collection are now validated. Before, a `List<List<T>>`, a `List<HashSet<T>>`, an `object[]` that holds a list, and a list of a sealed or struct collection such as `ImmutableList<T>` passed validation even when an object inside was invalid. The error is reported with the index of each level, for example `Value[0][0].Name`.
+- **BREAKING** for these two cases: the member name changed, because the path used to go through a public property of the inner collection.
+  - An array or an `ArrayList` inside a collection: `Value[0].SyncRoot[0].Name` is now `Value[0][0].Name`.
+  - A dictionary or a `Hashtable` inside a collection: `Value[0].Values[0].Name` is now `Value[0][0].Value.Name`.
+
+  Code that matches these member names must use the new form. A model that passed before can also fail now, if it holds an invalid object in a nested collection.
+- An item that is a collection is still validated as an object first, so its own attributes and `IValidatableObject.Validate` run, as before. Its items are then validated as well.
+- An item that throws when it is enumerated now throws from validation, like a collection that a property holds. A default `ImmutableArray<T>` item is skipped, because it holds nothing and enumerating it throws.
+- A struct collection such as `ImmutableArray<T>` is validated when it is an item, but not yet when a property holds it. That case is planned for the next release.
+
 ### Changed
 
 - The NuGet package title now reads "Recursive DataAnnotations Validation". It was misspelled "Recurisive".
