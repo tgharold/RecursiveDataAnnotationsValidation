@@ -275,6 +275,18 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.Equal(ResultText.Expect("Sibling.Name | Name is required"), errors);
             }
 
+            [Fact]
+            public void Thread_in_a_list_is_walked_without_error()
+            {
+                var (valid, errors) = Run(new ItemHolder
+                {
+                    Items = new List<object> { Thread.CurrentThread, new Leaf() }
+                });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Items[1].Name | Name is required"), errors);
+            }
+
             // Process.GetCurrentProcess() throws InvalidOperationException from a property read.
             // Process.StartInfo says "Process was not started by this object", because this
             // process was not started through a Process object.
