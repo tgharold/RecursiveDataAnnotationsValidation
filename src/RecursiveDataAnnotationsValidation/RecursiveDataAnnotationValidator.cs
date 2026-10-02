@@ -347,13 +347,17 @@ namespace RecursiveDataAnnotationsValidation
                     var index = arrayIndex;
                     foreach (var validationResult in nestedResults)
                     {
-                        validationResults.Add(
-                            new ValidationResult(
-                                validationResult.ErrorMessage,
-                                validationResult.MemberNames
-                                    .Select(x => ItemMemberName(propertyName, index, x))
-                                    .ToList()
-                                ));
+                        //the member names of an item that is a collection start with the index of its own items
+                        var startsWithIndex = validationResult is ItemOfCollectionResult;
+                        var memberNames = validationResult.MemberNames
+                            .Select(x => propertyName + "[" + index + "]" + (startsWithIndex ? "" : ".") + x)
+                            .ToList();
+
+                        //With no property name, the result is for an item that is a collection: the
+                        //caller puts its own index in front of these names, with no dot.
+                        validationResults.Add(propertyName.Length == 0
+                            ? new ItemOfCollectionResult(validationResult.ErrorMessage, memberNames)
+                            : new ValidationResult(validationResult.ErrorMessage, memberNames));
                     }
                 }
             }
@@ -361,12 +365,18 @@ namespace RecursiveDataAnnotationsValidation
             return result;
         }
 
-        //The name of a member of an item: Items[1].Name. The member name of an item that is a
-        //collection starts with its own index, so the indexes are joined without a dot: Items[1][0].Name.
-        private static string ItemMemberName(string propertyName, int index, string memberName)
+        //A result whose member names start with the index of an item, such as "[0].Name", and not
+        //with a property name. It marks the names that the caller must join without a dot.
+        //The names the items choose are not looked at, so a name that starts with "[", or a null
+        //name, is joined like any other name. A result of this type never reaches the caller,
+        //because the object passed to the validator is not enumerated, and every other result
+        //is rebuilt with a property name in front.
+        private sealed class ItemOfCollectionResult : ValidationResult
         {
-            var separator = memberName.StartsWith("[", StringComparison.Ordinal) ? "" : ".";
-            return propertyName + "[" + index + "]" + separator + memberName;
+            public ItemOfCollectionResult(string errorMessage, IEnumerable<string> memberNames)
+                : base(errorMessage, memberNames)
+            {
+            }
         }
 
         /* Note 1:
