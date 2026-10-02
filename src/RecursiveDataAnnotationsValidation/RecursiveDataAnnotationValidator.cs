@@ -261,6 +261,11 @@ namespace RecursiveDataAnnotationsValidation
                     case IEnumerable _ when value.GetType().IsCollectionOfLeafType():
                         continue;
 
+                    //a struct collection nobody set, such as a default ImmutableArray, holds nothing
+                    //and enumerating it throws, so skip it as an item is skipped
+                    case IEnumerable _ when value.IsDefaultStruct():
+                        continue;
+
                     case IEnumerable asEnumerable:
                         //an item that was enumerated above can return itself from a property, such as
                         //Array.SyncRoot, and enumerating it a second time would find nothing new

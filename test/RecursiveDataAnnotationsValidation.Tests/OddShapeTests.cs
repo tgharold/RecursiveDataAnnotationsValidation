@@ -330,8 +330,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
             }
 
 #if NET8_0_OR_GREATER
-            // ImmutableArray is a struct. See the limitation guards in StructsAreNotWalked for the
-            // same type held in a property.
+            // ImmutableArray is a struct. See StructCollectionPropertyTests for the same type held
+            // in a property.
             // See: https://learn.microsoft.com/dotnet/api/system.collections.immutable.immutablearray-1
             [Fact]
             public void List_of_immutable_arrays_is_validated()
@@ -701,10 +701,9 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// Structs. The validator walks into properties of reference types only, so a struct
         /// property is checked for its own validation attributes by Validator when the parent is
         /// validated, but nothing inside the struct is walked. A property of the struct that
-        /// carries an attribute is never checked, and neither are the items of a collection that is
-        /// itself a struct, such as ImmutableArray&lt;T&gt;, when a property holds it. A struct
-        /// collection that is an item of another collection is enumerated since 2.4.0. The planned
-        /// fix for the property case is in StructCollectionPropertyTests.
+        /// carries an attribute is never checked. The exception is a struct that is a collection,
+        /// such as ImmutableArray&lt;T&gt;: its items are validated, as an item of another collection
+        /// and as a property (see StructCollectionPropertyTests).
         /// These are limitation guards. Record structs with positional `[property: ...]`
         /// attributes are a modern way to model a value, so this one may surprise callers.
         /// See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/struct
@@ -755,15 +754,6 @@ namespace RecursiveDataAnnotationsValidation.Tests
             public void Record_struct_property_with_an_attribute_is_not_validated()
             {
                 var (valid, errors) = Run(new Holder<Coordinates> { Value = new Coordinates(200) });
-
-                Assert.True(valid);
-                Assert.Empty(errors);
-            }
-
-            [Fact]
-            public void Struct_collection_items_are_not_validated()
-            {
-                var (valid, errors) = Run(new Holder<LeafBag> { Value = new LeafBag(new Leaf()) });
 
                 Assert.True(valid);
                 Assert.Empty(errors);

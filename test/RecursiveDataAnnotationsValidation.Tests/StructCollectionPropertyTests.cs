@@ -11,51 +11,36 @@ using Xunit;
 namespace RecursiveDataAnnotationsValidation.Tests
 {
     /// <summary>
-    /// A collection that is a struct, held in a property. The specs here describe the planned
-    /// behavior. The guards that pin today's gap pass until the fix lands, and the specs fail until then.
+    /// A collection that is a struct, held in a property, such as Holder&lt;ImmutableArray&lt;T&gt;&gt;.
     ///
-    /// The inconsistency. The validator walks only the properties of a reference type (see
-    /// IsWalked), so a property whose type is a struct is never read. That includes a struct
-    /// that is a collection, such as ImmutableArray&lt;T&gt;. Since 2.4.0 the validator enumerates an
-    /// item that is a collection, and it does so for a struct too, because an item is validated as
-    /// an object whatever its type is. So the same ImmutableArray of invalid objects is:
+    /// Why it matters. The validator walks only the properties of a reference type (see IsWalked),
+    /// so a property whose type is a struct used to be skipped. That included a struct that is a
+    /// collection, such as ImmutableArray&lt;T&gt;. The validator enumerates an item that is a
+    /// collection, and it does so for a struct too, because an item is validated as an object
+    /// whatever its type is. So the same ImmutableArray of invalid objects was:
     /// - validated when it is an item, such as List&lt;ImmutableArray&lt;T&gt;&gt;, and
     /// - not validated, silently, when it is the value of a property.
-    /// A model can pass validation because the collection sits one level higher.
-    /// Both behaviors are pinned below, in a guard that passes today and fails on purpose when the
-    /// property case is fixed.
+    /// A model could pass validation because the collection sat one level higher.
     ///
-    /// Why a struct property is skipped. The rule suits a Point or a Money, where the validator
-    /// has nothing to walk into. It covers a struct that is a collection as a side effect, and
-    /// nothing in the code or the tests records a decision about collections. A struct property with
-    /// an attribute on the struct's own members is still not walked (see
-    /// OddShapeTests.StructsAreNotWalked), and this fix does not change that. A property that holds
-    /// a struct is only enumerated when the struct is a collection, so that a model does not pass
-    /// because the collection sits one level higher.
-    /// See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/struct
-    ///
-    /// The plan for the fix:
-    /// - IsWalked admits a property of a struct type when the struct is a collection that is not a
-    ///   collection of leaf types, and a Nullable of such a struct. A struct that is not a
-    ///   collection, such as a Money, is still skipped.
-    /// - The walk reads the value, which is boxed, and enumerates it like any other collection.
-    ///   The path is the same as for a collection that is a class: Value[0].Name.
+    /// The rule now. IsWalked admits a property of a struct type when the struct is a collection
+    /// that is not a collection of leaf types, and a Nullable of such a struct. The walk reads the
+    /// value, which is boxed, and enumerates it like any other collection. The path is the same
+    /// as for a collection that is a class: Value[0].Name.
+    /// - A struct that is not a collection, such as a Money, is still skipped. An attribute on
+    ///   its members is still not checked (see OddShapeTests.StructsAreNotWalked).
     /// - A struct in a property that equals its default value, such as a default ImmutableArray or
     ///   ArraySegment, is skipped, as an item is (see NestedCollectionEdgeCaseTests, Case 2). It
-    ///   passes today, so enumerating it would add a crash.
+    ///   passed before, and enumerating it would add a crash. A struct with no fields always
+    ///   equals its default, so it is skipped too.
     /// - A struct collection that throws when enumerated throws from the property too, like an
     ///   item and like a class. This is a change for the few models that hold one.
     /// - Check 4 of IsLeafType uses IsWalked, so a struct with such a property is no longer a
     ///   leaf type. That is the right answer, because the validator now looks inside it.
+    /// - [SkipRecursiveValidation] on the property still skips it.
+    /// See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/struct
     ///
-    /// When the fix lands:
-    /// - Unskip the specs below.
-    /// - Delete Struct_collection_is_validated_as_an_item_but_not_as_a_property, which pins the gap.
-    /// - Replace OddShapeTests.StructsAreNotWalked.Struct_collection_items_are_not_validated, which
-    ///   pins the same gap, and update the comment of that class, which mentions ImmutableArray.
-    /// - Add a Fixed entry to the changelog. A model that passes today can fail. List the changed
-    ///   member name format as BREAKING only if one exists. A property that was never walked has no
-    ///   path to change.
+    /// A model that passed before can fail now. The path of an error is new, so no member name
+    /// that callers matched has changed.
     /// </summary>
     public class StructCollectionPropertyTests
     {
@@ -136,20 +121,18 @@ namespace RecursiveDataAnnotationsValidation.Tests
             IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         }
 
-        /// <summary>
-        /// Guard that pins the gap. The same struct is validated as an item, and passes as a
-        /// property. It fails on purpose when the property case is fixed.
-        /// </summary>
+        // The same struct is validated as an item and as a property, with the same member names
+        // except for the extra index of the list.
         [Fact]
-        public void Struct_collection_is_validated_as_an_item_but_not_as_a_property()
+        public void Struct_collection_is_validated_as_an_item_and_as_a_property()
         {
             var asItem = Run(new Holder<List<LeafBag>> { Value = new List<LeafBag> { new LeafBag(new Leaf()) } });
             var asProperty = Run(new Holder<LeafBag> { Value = new LeafBag(new Leaf()) });
 
             Assert.False(asItem.Valid);
             Assert.Equal(ResultText.Expect("Value[0][0].Name" + NameRequired), asItem.Errors);
-            Assert.True(asProperty.Valid);
-            Assert.Empty(asProperty.Errors);
+            Assert.False(asProperty.Valid);
+            Assert.Equal(ResultText.Expect("Value[0].Name" + NameRequired), asProperty.Errors);
         }
 
         [Fact]
@@ -280,10 +263,11 @@ namespace RecursiveDataAnnotationsValidation.Tests
             Assert.IsType<InvalidOperationException>(ex);
         }
 
+        // A default struct is skipped, as an item is, so one that would throw passes.
         [Fact]
-        public void Struct_collection_that_throws_when_enumerated_passes_today()
+        public void Default_struct_collection_that_throws_when_enumerated_is_skipped()
         {
-            var (valid, errors) = Run(new Holder<ThrowingStructBag> { Value = new ThrowingStructBag(1) });
+            var (valid, errors) = Run(new Holder<ThrowingStructBag> { Value = default });
 
             Assert.True(valid);
             Assert.Empty(errors);

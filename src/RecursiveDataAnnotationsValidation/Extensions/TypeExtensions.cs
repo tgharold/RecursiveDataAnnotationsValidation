@@ -121,13 +121,14 @@ namespace RecursiveDataAnnotationsValidation.Extensions
 
         /// <summary>
         /// True for a property the validator walks into: readable, not an indexer, not marked
-        /// [SkipRecursiveValidation], of a reference type other than string, and not declared by a
-        /// framework type whose properties are unsafe to read (see <see cref="IsUnsafeToWalk"/>).
+        /// [SkipRecursiveValidation], of a reference type other than string or of a struct that is a
+        /// collection of items that can have attributes, and not declared by a framework type whose
+        /// properties are unsafe to read (see <see cref="IsUnsafeToWalk"/>).
         /// </summary>
         public static bool IsWalked(this PropertyInfo property)
         {
             return property.PropertyType != typeof(string)
-                && !property.PropertyType.IsValueType
+                && IsWalkedType(property.PropertyType)
                 && property.CanRead
                 && property.GetIndexParameters().Length == 0
                 && !property.IsDefined(typeof(SkipRecursiveValidationAttribute), false)
@@ -172,6 +173,19 @@ namespace RecursiveDataAnnotationsValidation.Extensions
             var type = obj.GetType();
 
             return type.IsValueType && obj.Equals(DefaultValues.GetOrAdd(type, FormatterServices.GetUninitializedObject));
+        }
+
+        // A property of a reference type is walked. A property of a struct is not, because a struct such
+        // as a Point or a Money has nothing to walk into. The exception is a struct that is a collection
+        // of items that can have attributes, such as ImmutableArray<T> of a class, because the same
+        // struct is enumerated when it is an item of another collection, and a model must not pass
+        // because the collection sits one level higher. A Nullable<T> is checked as T.
+        private static bool IsWalkedType(Type type)
+        {
+            type = Nullable.GetUnderlyingType(type) ?? type;
+
+            return !type.IsValueType
+                || (typeof(IEnumerable).IsAssignableFrom(type) && !type.IsCollectionOfLeafType());
         }
 
         private static bool IsInSystemNamespace(Type type)

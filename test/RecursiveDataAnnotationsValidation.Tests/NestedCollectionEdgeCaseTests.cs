@@ -109,8 +109,9 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// - A default struct holds no objects, so "valid" is the correct answer, and the answer on
         ///   2.3.3. A fix that makes it throw turns a passing model into a crash for a reason the
         ///   caller did not cause and cannot see in the model.
-        /// - The same struct held in a property is not walked at all (StructsAreNotWalked), so it
-        ///   passes today and after the fix. Only an item would throw. That difference is a trap.
+        /// - The same struct held in a property is enumerated too, since 3.0, and a default one is
+        ///   skipped the same way (StructCollectionPropertyTests). Before that it was not walked at
+        ///   all, so only an item would throw, and that difference was a trap.
         /// Options that were weighed:
         /// - A. Skip a default ImmutableArray only. It leaves ArraySegment and the caller's own
         ///   structs to throw.
