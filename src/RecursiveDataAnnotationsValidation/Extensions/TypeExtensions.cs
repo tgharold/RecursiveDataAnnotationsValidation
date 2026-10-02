@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -7,6 +8,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Serialization;
 using System.Threading;
 using RecursiveDataAnnotationsValidation.Attributes;
 
@@ -26,6 +28,12 @@ namespace RecursiveDataAnnotationsValidation.Extensions
         private static readonly ConcurrentDictionary<Type, bool> OverridesEqualsCache =
             new ConcurrentDictionary<Type, bool>();
 
+        // A boxed default(T) for each struct type. GetUninitializedObject returns zeroed memory, so
+        // it is default(T) even for a struct that declares a parameterless constructor, which
+        // Activator.CreateInstance would run.
+        private static readonly ConcurrentDictionary<Type, object> DefaultValues =
+            new ConcurrentDictionary<Type, object>();
+
         private static readonly ConcurrentDictionary<Type, bool> UnsafeToWalkCache =
             new ConcurrentDictionary<Type, bool>();
 
@@ -43,6 +51,11 @@ namespace RecursiveDataAnnotationsValidation.Extensions
             typeof(Thread),         // CurrentCulture and others throw when read from another thread
             typeof(Process),        // StartInfo and others throw for a process this object did not start
         };
+
+        // The types IsLeafType is deciding on this thread. A type that yields itself, such as
+        // `sealed class Node : IEnumerable<Node>`, asks about its own type while it is being decided.
+        [ThreadStatic]
+        private static HashSet<Type> _typesBeingChecked;
 
         private static int _typeDescriptorVersion;
 
@@ -72,6 +85,10 @@ namespace RecursiveDataAnnotationsValidation.Extensions
         /// 2. No validation attribute on any of its properties.
         /// 3. It does not implement IValidatableObject.
         /// 4. No property the validator walks into (see <see cref="IsWalked"/>).
+        /// 5. If it is a collection, it is a collection of leaf types (see <see cref="IsCollectionOfLeafType"/>),
+        ///    because the validator enumerates an item that is a collection, and the items it
+        ///    yields can have attributes of their own. A collection of an unknown item type, such as
+        ///    a non-generic one, is not a leaf type.
         /// Checks 1 and 2 use TypeDescriptor, like Validator, so attributes added at runtime count.
         /// </summary>
         public static bool IsLeafType(this Type type)
@@ -82,7 +99,22 @@ namespace RecursiveDataAnnotationsValidation.Extensions
             if (LeafTypeCache.TryGetValue(type, out var cached) && cached.Version == version)
                 return cached.IsLeaf;
 
-            var isLeaf = FindIsLeafType(type);
+            var typesBeingChecked = _typesBeingChecked ?? (_typesBeingChecked = new HashSet<Type>());
+
+            // A type that is already being decided is not a leaf type. That is the safe answer,
+            // because the validator then looks at the type instead of skipping it.
+            if (!typesBeingChecked.Add(type)) return false;
+
+            bool isLeaf;
+            try
+            {
+                isLeaf = FindIsLeafType(type);
+            }
+            finally
+            {
+                typesBeingChecked.Remove(type);
+            }
+
             LeafTypeCache[type] = (version, isLeaf);
             return isLeaf;
         }
@@ -127,6 +159,21 @@ namespace RecursiveDataAnnotationsValidation.Extensions
                 && UnsafeToWalkTypes.Any(unsafeType => unsafeType.IsAssignableFrom(t)));
         }
 
+        /// <summary>
+        /// True for a struct that equals its default value, such as an ImmutableArray or an
+        /// ArraySegment that nobody set, or a struct of your own whose fields are all null or zero.
+        /// A default struct collection usually holds nothing to validate, and enumerating one throws:
+        /// InvalidOperationException for these two framework types, NullReferenceException for a
+        /// struct that wraps an array. The validator skips it, so a model that has an unset struct
+        /// field does not start to throw. Equality is the struct's own Equals.
+        /// </summary>
+        public static bool IsDefaultStruct(this object obj)
+        {
+            var type = obj.GetType();
+
+            return type.IsValueType && obj.Equals(DefaultValues.GetOrAdd(type, FormatterServices.GetUninitializedObject));
+        }
+
         private static bool IsInSystemNamespace(Type type)
         {
             var ns = type.Namespace;
@@ -148,7 +195,8 @@ namespace RecursiveDataAnnotationsValidation.Extensions
             return (type.IsValueType || type.IsSealed)
                 && !HasValidationAttributes(type)
                 && !typeof(IValidatableObject).IsAssignableFrom(type)
-                && !type.GetProperties().Any(IsWalked);
+                && !type.GetProperties().Any(IsWalked)
+                && (!typeof(IEnumerable).IsAssignableFrom(type) || type.IsCollectionOfLeafType());
         }
 
         /// <summary>

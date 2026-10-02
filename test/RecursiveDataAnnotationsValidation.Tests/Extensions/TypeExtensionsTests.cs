@@ -17,6 +17,10 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
     ///    that implements it.
     /// 4. No property the validator would walk into: a readable, non-indexer property of a
     ///    reference type other than string.
+    /// 5. If it is a collection, it is a collection of leaf types. The validator enumerates an
+    ///    item that is a collection, so a sealed class or a struct that yields objects must not
+    ///    be skipped. A collection that yields an unknown type, such as a non-generic one, counts
+    ///    as one that yields objects.
     /// Checks 1 and 2 use TypeDescriptor, like Validator, so attributes added at runtime count.
     /// The type must also be a value type or a sealed class. Otherwise a collection declared
     /// as List&lt;Base&gt; could hold a derived object that has its own attributes.
@@ -44,6 +48,38 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
         {
             public string Name { get; set; }
             public int Weight { get; set; }
+        }
+
+        // Collections of leaf types and of objects, sealed or a struct, for check 5.
+        public sealed class SealedIntBag : IEnumerable<int>
+        {
+            public IEnumerator<int> GetEnumerator() => throw new NotSupportedException();
+            IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException();
+        }
+
+        public sealed class SealedChildBag : IEnumerable<Child>
+        {
+            public IEnumerator<Child> GetEnumerator() => throw new NotSupportedException();
+            IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException();
+        }
+
+        public struct ChildBagStruct : IEnumerable<Child>
+        {
+            public IEnumerator<Child> GetEnumerator() => throw new NotSupportedException();
+            IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException();
+        }
+
+        public sealed class NonGenericBag : IEnumerable
+        {
+            public IEnumerator GetEnumerator() => throw new NotSupportedException();
+        }
+
+        // Yields its own type. Deciding that it is a leaf type asks whether it is a leaf type, and
+        // without a guard that would never end. It is not a leaf type, because it yields objects.
+        public sealed class SelfYieldingBag : IEnumerable<SelfYieldingBag>
+        {
+            public IEnumerator<SelfYieldingBag> GetEnumerator() => throw new NotSupportedException();
+            IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException();
         }
 
         // Fails check 3.
@@ -107,6 +143,11 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
         [InlineData(typeof(List<PlainPoint>))]
         [InlineData(typeof(List<PlainPoint?>))]
         [InlineData(typeof(List<SealedTag>))]
+        [InlineData(typeof(List<SealedIntBag>))]
+#if NET8_0_OR_GREATER
+        [InlineData(typeof(List<System.Collections.Immutable.ImmutableArray<int>>))]
+        [InlineData(typeof(List<System.Collections.Immutable.ImmutableList<Guid>>))]
+#endif
         public void Collection_of_leaf_type_is_detected(Type type)
         {
             Assert.True(type.IsCollectionOfLeafType());
@@ -127,9 +168,77 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
         [InlineData(typeof(List<SelfValidatingPoint>))]
         [InlineData(typeof(List<PointWithChild>))]
         [InlineData(typeof(List<UnsealedTag>))]
+        [InlineData(typeof(List<SealedChildBag>))]
+        [InlineData(typeof(List<ChildBagStruct>))]
+        [InlineData(typeof(List<NonGenericBag>))]
+        [InlineData(typeof(List<SelfYieldingBag>))]
+        [InlineData(typeof(SelfYieldingBag[]))]
+#if NET8_0_OR_GREATER
+        [InlineData(typeof(List<System.Collections.Immutable.ImmutableArray<Child>>))]
+        [InlineData(typeof(List<System.Collections.Immutable.ImmutableList<Child>>))]
+#endif
         public void Collection_that_can_yield_other_types_is_not_detected(Type type)
         {
             Assert.False(type.IsCollectionOfLeafType());
+        }
+
+        [Fact]
+        public void Sealed_collection_of_objects_is_not_a_leaf_type()
+        {
+            Assert.False(typeof(SealedChildBag).IsLeafType());
+            Assert.False(typeof(ChildBagStruct).IsLeafType());
+            Assert.False(typeof(NonGenericBag).IsLeafType());
+            Assert.False(typeof(SelfYieldingBag).IsLeafType());
+        }
+
+        [Fact]
+        public void Sealed_collection_of_values_is_a_leaf_type()
+        {
+            Assert.True(typeof(SealedIntBag).IsLeafType());
+            Assert.True(typeof(string).IsLeafType());
+        }
+
+        // A default struct collection holds nothing, and enumerating one throws, so the validator skips it.
+        // The check is the struct's own Equals against default(T), so it needs no list of types.
+        [Fact]
+        public void Default_struct_is_detected()
+        {
+            Assert.True(((object)default(ArraySegment<Child>)).IsDefaultStruct());
+            Assert.True(((object)default(PlainPoint)).IsDefaultStruct());
+            Assert.True(((object)default(int)).IsDefaultStruct());
+        }
+
+#if NET8_0_OR_GREATER
+        // System.Collections.Immutable is not part of net481.
+        [Fact]
+        public void Default_immutable_array_is_detected()
+        {
+            Assert.True(((object)default(System.Collections.Immutable.ImmutableArray<Child>)).IsDefaultStruct());
+        }
+
+        [Fact]
+        public void Immutable_array_that_has_a_value_is_not_detected()
+        {
+            Assert.False(((object)System.Collections.Immutable.ImmutableArray.Create(new Child())).IsDefaultStruct());
+            Assert.False(((object)System.Collections.Immutable.ImmutableArray<Child>.Empty).IsDefaultStruct());
+        }
+#endif
+
+        [Fact]
+        public void Struct_that_has_a_value_is_not_detected()
+        {
+            Assert.False(((object)new ArraySegment<Child>(new[] { new Child() })).IsDefaultStruct());
+            Assert.False(((object)new ArraySegment<Child>(new Child[0])).IsDefaultStruct());
+            Assert.False(((object)new PlainPoint { X = 1 }).IsDefaultStruct());
+            Assert.False(((object)5).IsDefaultStruct());
+        }
+
+        [Fact]
+        public void Object_of_a_class_is_not_a_default_struct()
+        {
+            Assert.False(new List<Child>().IsDefaultStruct());
+            Assert.False("text".IsDefaultStruct());
+            Assert.False(new object().IsDefaultStruct());
         }
 
         // Framework types whose properties throw or never end when walked, and types derived from them.
