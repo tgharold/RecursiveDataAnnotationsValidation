@@ -15,7 +15,8 @@ namespace RecursiveDataAnnotationsValidation
         //The deepest level that is validated. The depth of an object is the number of segments in its
         //shortest path: each property step and each collection index is one level, and the root is level 0.
         //An object at a deeper level is not validated and fails the validation (see GraphWalk.Walk).
-        //The limit stops a computed property that builds a new object on each read, which never ends otherwise.
+        //The limit stops a computed property that builds one new object on each read, which never ends
+        //otherwise. It does not stop one that builds two or more, because the walk runs out of memory first.
         //128 is twice the depth that System.Text.Json allows by default, which counts nearly the same way.
         internal const int MaxDepth = 128;
 
@@ -143,6 +144,9 @@ namespace RecursiveDataAnnotationsValidation
             //every object that was queued, compared by reference
             private readonly HashSet<object> queuedObjects = new HashSet<object>(ObjectReferenceComparer.Instance);
 
+            //every object that was validated but not walked, because it Equals an ancestor on its path
+            private readonly HashSet<object> stoppedObjects = new HashSet<object>(ObjectReferenceComparer.Instance);
+
             private readonly ICollection<ValidationResult> validationResults;
             private readonly IServiceProvider serviceProvider;
             private readonly IDictionary<object, object> validationContextItems;
@@ -167,7 +171,7 @@ namespace RecursiveDataAnnotationsValidation
                 }
 
                 queuedObjects.Add(root);
-                queue.Enqueue(new WorkItem(root, null, 0, null, false, false));
+                queue.Enqueue(new WorkItem(root, null, 0, null, false, false, false));
 
                 var valid = true;
                 while (queue.Count > 0)
@@ -201,9 +205,18 @@ namespace RecursiveDataAnnotationsValidation
             {
                 //an object of a leaf type can never produce a result, such as a boxed int in an object[] (see IsLeafType)
                 //An object that was queued before is skipped, which also ends a cycle in the graph.
-                if (value.GetType().IsLeafType() || !queuedObjects.Add(value))
+                var type = value.GetType();
+                if (type.IsLeafType() || queuedObjects.Contains(value))
                 {
                     return;
+                }
+
+                //An object that Equals an ancestor on this path is validated, but not walked from here.
+                //It is not marked, so a later path that does not pass an equal ancestor can still walk it.
+                var stopHere = type.OverridesEquals() && EqualsAnAncestor(value, type, ancestors);
+                if (!stopHere)
+                {
+                    queuedObjects.Add(value);
                 }
 
                 queue.Enqueue(new WorkItem(
@@ -212,7 +225,8 @@ namespace RecursiveDataAnnotationsValidation
                     depth,
                     ancestors,
                     enumerateItems,
-                    false
+                    false,
+                    stopHere
                     ));
             }
 
@@ -247,17 +261,22 @@ namespace RecursiveDataAnnotationsValidation
                 //`Money Zero => new Money(0)`, so references never repeat and the walk would not end.
                 //Stop at an object that Equals an object on its own path: validate its own attributes,
                 //so a child that Equals its parent by Id is still checked, but don't walk into it.
-                var overridesEquals = type.OverridesEquals();
-                if (overridesEquals && EqualsAnAncestor(obj, type, item.Ancestors))
+                //(the check runs when the object is queued, see Enqueue)
+                if (item.EqualsAnAncestor)
                 {
-                    return Validate(item);
+                    //Validated once, however many paths stop at it. A path that walks it was queued
+                    //after this one (Enqueue drops a stop for an object that is queued), so it comes out
+                    //of the queue later, and it skips the validation (see below).
+                    return !stoppedObjects.Add(obj) || Validate(item);
                 }
+
+                var overridesEquals = type.OverridesEquals();
 
                 //An object this deep is not validated and not walked, and the validation fails:
                 //nobody has checked it, so it must not pass. The path to it is the shortest one,
                 //so the depth is true, and the object gets one error, and not one for each path.
-                //A leaf, an object seen before and an object that Equals an ancestor all returned
-                //above, because none of them walks any further.
+                //A leaf and an object queued before never get here (see Enqueue), and an object that
+                //Equals an ancestor on its path returned above, so none of them gets a depth error.
                 if (item.Depth > MaxDepth)
                 {
                     validationResults.Add(new ValidationResult(
@@ -269,7 +288,8 @@ namespace RecursiveDataAnnotationsValidation
 
                 var ancestors = overridesEquals ? new EqualsAncestor(obj, item.Ancestors) : item.Ancestors;
 
-                var result = Validate(item);
+                //an object that a shorter path stopped at was validated there, so only walk it now
+                var result = (stoppedObjects.Count > 0 && stoppedObjects.Contains(obj)) || Validate(item);
 
                 //An item that is a collection is validated as an object above, so its own attributes run.
                 //Then its items are queued, before its properties. An object that the collection also
@@ -324,7 +344,8 @@ namespace RecursiveDataAnnotationsValidation
                                 item.Depth + 1,
                                 ancestors,
                                 false,
-                                true
+                                true,
+                                false
                                 ));
                             break;
 
@@ -340,7 +361,8 @@ namespace RecursiveDataAnnotationsValidation
             //Validates the attributes and IValidatableObject of one object. A result of the root
             //object goes to the caller's list as it is. A result of any other object gets its member
             //names prefixed by the path of the object, so the names are the full path from the root.
-            //An object that has no path has no member names to prefix, and its result has none either.
+            //The root object has no path, so its results keep their member names. A result that has no
+            //member names, such as an error of the whole object, stays without names.
             private bool Validate(WorkItem item)
             {
                 if (item.Path == null)
@@ -414,9 +436,11 @@ namespace RecursiveDataAnnotationsValidation
                 int depth,
                 EqualsAncestor ancestors,
                 bool enumerateItems,
-                bool isCollectionOfProperty
+                bool isCollectionOfProperty,
+                bool equalsAnAncestor
                 )
             {
+                EqualsAnAncestor = equalsAnAncestor;
                 Value = value;
                 Path = path;
                 Depth = depth;
@@ -431,6 +455,7 @@ namespace RecursiveDataAnnotationsValidation
             public EqualsAncestor Ancestors { get; }
             public bool EnumerateItems { get; }
             public bool IsCollectionOfProperty { get; }
+            public bool EqualsAnAncestor { get; }
         }
 
         //The last segment of a path and a link to the rest of it: a property name, or an index if
