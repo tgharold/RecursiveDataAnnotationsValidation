@@ -64,6 +64,15 @@ namespace RecursiveDataAnnotationsValidation.Tests
             public List<object> Value { get; set; }
         }
 
+        /// <summary>
+        /// Builds a new object on each read and does not override Equals, so no object ever
+        /// matches an object on its path and the reference check never sees a repeat.
+        /// </summary>
+        public class Vector
+        {
+            public Vector Zero => new Vector();
+        }
+
         // A chain of `levels` objects below the root. The object at the bottom has the given name.
         private static Node Chain(int levels, string bottomName)
         {
@@ -245,6 +254,23 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
                 Assert.False(valid);
                 Assert.Equal(ResultText.Expect($"{NextPath(129)} | {TooDeep}"), ResultText.Describe(results));
+            }
+        }
+
+        public class ComputedProperties
+        {
+            /// <summary>
+            /// Before the limit, this walk never ended and overflowed the stack, which ends the
+            /// process. A type that overrides Equals is stopped earlier (see EqualsAnAncestor), and
+            /// a type that does not override it is stopped by the limit.
+            /// </summary>
+            [Fact]
+            public void Property_that_returns_a_new_object_on_each_read_fails_at_the_limit()
+            {
+                var (valid, errors) = Run(new Vector());
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect($"{string.Join(".", Enumerable.Repeat("Zero", 129))} | {TooDeep}"), errors);
             }
         }
 

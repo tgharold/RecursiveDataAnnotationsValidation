@@ -16,8 +16,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// Each nested class covers one item. Its summary gives the problem and the proposed fix.
     /// Some tests guard behavior that a fix must not break. Their comments say why.
     /// Not covered:
-    /// - A max-depth limit. A deep acyclic graph causes an uncatchable StackOverflowException
-    ///   that would kill the test host, so it needs a design decision first.
+    /// - A max-depth limit. It is covered in MaxDepthTests.
     /// - Lazy or infinite sequences of objects, and user getters that throw. The desired
     ///   behavior (skip, report or propagate) is not decided yet. Lazy sequences of leaf types
     ///   are no longer run (see PrimitiveCollections).
@@ -154,7 +153,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
         ///   overflowed (see Records_that_reference_each_other_are_validated). On .NET Framework
         ///   they still always overflow, inside the framework's Validator (see that test).
         /// - A property that returns a new object on each read, on a type that does not override
-        ///   Equals, such as `Vector Zero => new Vector()`, overflows the stack.
+        ///   Equals, such as `Vector Zero => new Vector()`, overflowed the stack. Since 3.0 the
+        ///   maximum depth stops it and fails the validation (see MaxDepthTests.ComputedProperties).
         /// </summary>
         public class ReferenceEquality
         {
