@@ -174,7 +174,7 @@ namespace RecursiveDataAnnotationsValidation.Extensions
             return type.IsValueType && obj.Equals(DefaultValues.GetOrAdd(type, FormatterServices.GetUninitializedObject));
         }
 
-                private static bool IsInSystemNamespace(Type type)
+        private static bool IsInSystemNamespace(Type type)
         {
             var ns = type.Namespace;
             return ns != null && (ns == "System" || ns.StartsWith("System.", StringComparison.Ordinal));
