@@ -6,14 +6,13 @@ on:
 
 name: Create Release on Git Tag
 
-# Needed to create the GitHub release and attach assets.
+# Default to read-only. Each job below grants what it needs.
 permissions:
-  contents: write
+  contents: read
 
 env:
   PROJECT: RecursiveDataAnnotationsValidation
   CONFIG: Release
-  TARGET: netstandard2.0
 
 jobs:
   # Cheap checks first, so a bad tag fails before the test matrix uses any runners.
@@ -102,12 +101,6 @@ jobs:
       - name: dotnet build
         run: dotnet build "src/$PROJECT" --configuration "$CONFIG"
 
-      - name: dotnet publish
-        working-directory: ./src/${{ env.PROJECT }}
-        run: >
-          dotnet publish --configuration "$CONFIG"
-          /p:Version="$RELEASE_VERSION" /p:InformationalVersion="$RELEASE_VERSION"
-
       - name: Create artifacts directory
         run: mkdir -p artifacts
 
@@ -169,9 +162,7 @@ jobs:
           path: |
             release/
 
-      # NOTE: RELEASE_CREATE is never set, so this step is skipped (same as before).
       - name: Attach Zip to GitHub Release
-        if: ${{ env.RELEASE_CREATE }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >
