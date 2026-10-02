@@ -552,8 +552,10 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 public OriginPoint Origin => new OriginPoint(0, 0);
             }
 
-            // The same pattern as a static property. Type.GetProperties() returns public static
-            // properties as well as instance properties, so the validator walks this one too.
+            // The same pattern as a static property. Type.GetProperties() with no arguments returns
+            // public static properties as well as instance properties, so up to 2.3.3 the validator
+            // walked this one too. Since 3.0 it walks instance properties only, so this guard
+            // passes without the Equals check.
             // See: https://learn.microsoft.com/dotnet/api/system.type.getproperties
             public record StaticOriginPoint(int X, int Y)
             {
