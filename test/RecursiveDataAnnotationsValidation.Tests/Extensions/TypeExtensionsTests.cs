@@ -274,6 +274,45 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
             public ChildBagStruct Bag { get; set; }
         }
 
+        public class OwnedLinkedList : LinkedList<Child>
+        {
+            public Child Owner { get; set; }
+        }
+
+        // A collection is enumerated, so the properties that a framework type declares on it are
+        // not walked: they repeat the items, such as LinkedList.First and Last. The properties that
+        // your own collection type adds are walked.
+        [Fact]
+        public void Framework_properties_of_a_collection_are_not_walked()
+        {
+            Assert.Empty(typeof(LinkedList<Child>).GetWalkedProperties());
+            Assert.Equal(
+                new[] { nameof(OwnedLinkedList.Owner) },
+                typeof(OwnedLinkedList).GetWalkedProperties().ConvertAll(p => p.Name));
+        }
+
+        // A framework type that is not a collection keeps its properties walked, so the objects
+        // in a Tuple or a KeyValuePair are reached.
+        [Fact]
+        public void Framework_properties_of_a_type_that_is_not_a_collection_are_walked()
+        {
+            Assert.Equal(
+                new[] { nameof(Tuple<Child, int>.Item1) },
+                typeof(Tuple<Child, int>).GetWalkedProperties().ConvertAll(p => p.Name));
+            Assert.Equal(
+                new[] { nameof(KeyValuePair<string, Child>.Value) },
+                typeof(KeyValuePair<string, Child>).GetWalkedProperties().ConvertAll(p => p.Name));
+        }
+
+        // Check 4 of IsLeafType uses the walked properties. ArraySegment<int> has an Array property
+        // of type int[], which used to count as walked. It holds only ints, so it is a leaf type.
+        [Fact]
+        public void Array_segment_of_values_is_a_leaf_type()
+        {
+            Assert.True(typeof(ArraySegment<int>).IsLeafType());
+            Assert.False(typeof(ArraySegment<Child>).IsLeafType());
+        }
+
 #if NET8_0_OR_GREATER
         public class ImmutableArrayHolder
         {
