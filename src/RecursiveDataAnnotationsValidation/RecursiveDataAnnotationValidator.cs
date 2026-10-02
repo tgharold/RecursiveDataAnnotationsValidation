@@ -282,8 +282,10 @@ namespace RecursiveDataAnnotationsValidation
                         continue;
 
                     //a struct collection nobody set, such as a default ImmutableArray, holds nothing
-                    //and enumerating it throws, so skip it as an item is skipped
-                    case IEnumerable _ when value.IsDefaultStruct():
+                    //and enumerating it throws, so skip it as an item is skipped. Only for a property
+                    //declared as a struct: a property declared as an interface or object was always
+                    //enumerated, and a boxed struct in one must not start to be skipped.
+                    case IEnumerable _ when property.PropertyType.IsValueType && value.IsDefaultStruct():
                         continue;
 
                     case IEnumerable asEnumerable:

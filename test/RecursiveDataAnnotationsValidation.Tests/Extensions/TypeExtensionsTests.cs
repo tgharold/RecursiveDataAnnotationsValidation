@@ -265,7 +265,7 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
 #endif
 
         // A default struct collection holds nothing, and enumerating one throws, so the validator skips it.
-        // The check is the struct's own Equals against default(T), so it needs no list of types.
+        // The check compares the memory of the struct with default(T), so it needs no list of types.
         [Fact]
         public void Default_struct_is_detected()
         {

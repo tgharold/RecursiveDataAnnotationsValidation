@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Threading;
 using RecursiveDataAnnotationsValidation.Attributes;
@@ -166,13 +167,19 @@ namespace RecursiveDataAnnotationsValidation.Extensions
         /// A default struct collection usually holds nothing to validate, and enumerating one throws:
         /// InvalidOperationException for these two framework types, NullReferenceException for a
         /// struct that wraps an array. The validator skips it, so a model that has an unset struct
-        /// field does not start to throw. Equality is the struct's own Equals.
+        /// field does not start to throw.
+        /// The struct is compared with default(T) by its memory. The Equals of the caller's type is
+        /// not called: it can say "equal" for a struct that holds objects, such as one that compares
+        /// only an Id, which would let invalid objects pass, and it can throw. A struct with no
+        /// fields is always default.
+        /// See: https://learn.microsoft.com/dotnet/api/system.runtime.compilerservices.runtimehelpers.equals
         /// </summary>
         public static bool IsDefaultStruct(this object obj)
         {
             var type = obj.GetType();
 
-            return type.IsValueType && obj.Equals(DefaultValues.GetOrAdd(type, FormatterServices.GetUninitializedObject));
+            return type.IsValueType
+                && RuntimeHelpers.Equals(obj, DefaultValues.GetOrAdd(type, FormatterServices.GetUninitializedObject));
         }
 
         // A property of a reference type is walked. A property of a struct is not, because a struct such
