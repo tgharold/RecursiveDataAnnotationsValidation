@@ -902,9 +902,9 @@ namespace RecursiveDataAnnotationsValidation.Tests
         ///
         /// Accepted gap: a type whose non-generic enumerator yields different items than its
         /// IEnumerable&lt;T&gt; breaks the IEnumerable&lt;T&gt; contract. It is skipped by its declared type.
-        /// Known gap, not changed here: a type-level error on an item, such as the enum attribute
-        /// above, has no member names. The validator builds each path by prefixing the item's
-        /// member names, so that error is reported with no path at all.
+        /// A type-level error on an item, such as the enum attribute above, has no member names.
+        /// Since 3.0 the validator reports it with the path of the item as its member name, such
+        /// as "Items[1]". Before, it had no path at all.
         /// Not solved here: lazy or infinite sequences of objects, and lazy queryables of objects
         /// that hit a database. Those need a separate decision.
         /// </summary>
@@ -1065,15 +1065,15 @@ namespace RecursiveDataAnnotationsValidation.Tests
             }
 
             // Guard. An enum is a leaf type, but this one has a type-level validation attribute
-            // in its source. Each item must still be validated. The error has no member names,
-            // so this test checks the count only (see the class summary).
+            // in its source. Each item must still be validated. The error belongs to the item
+            // itself, so its member name is the path of the item (see the class summary).
             [Fact]
             public void Collections_of_enums_with_a_validation_attribute_are_still_validated()
             {
                 var (valid, results, enumerationCount) = Validate(CheckedColor.Red, (CheckedColor)99);
 
                 Assert.False(valid);
-                Assert.Single(results);
+                Assert.Equal(new[] { "Items[1]" }, Assert.Single(results).MemberNames);
                 Assert.Equal(1, enumerationCount);
             }
 

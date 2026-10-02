@@ -360,7 +360,8 @@ namespace RecursiveDataAnnotationsValidation
             //object goes to the caller's list as it is. A result of any other object gets its member
             //names prefixed by the path of the object, so the names are the full path from the root.
             //The root object has no path, so its results keep their member names. A result that has no
-            //member names, such as an error of the whole object, stays without names.
+            //member names, or a null or empty one, is an error of the whole object, such as one from a
+            //class-level attribute, so it gets the path of the object itself (see MemberNames).
             private bool Validate(WorkItem item)
             {
                 if (item.Path == null)
@@ -377,11 +378,27 @@ namespace RecursiveDataAnnotationsValidation
                 var path = item.Path.ToString();
                 foreach (var validationResult in results)
                 {
-                    var memberNames = validationResult.MemberNames.Select(x => path + "." + x).ToList();
-                    validationResults.Add(new ValidationResult(validationResult.ErrorMessage, memberNames));
+                    validationResults.Add(new ValidationResult(validationResult.ErrorMessage, MemberNames(validationResult, path)));
                 }
 
                 return false;
+            }
+
+            //The member names of a nested result, as paths from the root. A null or empty name means
+            //the object itself, so it becomes the path alone ("Lines[1]"), and not the path with a dot
+            //and nothing after it. A result with no names at all gets the path as its only name.
+            private static List<string> MemberNames(ValidationResult validationResult, string path)
+            {
+                var memberNames = validationResult.MemberNames
+                    .Select(x => string.IsNullOrEmpty(x) ? path : path + "." + x)
+                    .ToList();
+
+                if (memberNames.Count == 0)
+                {
+                    memberNames.Add(path);
+                }
+
+                return memberNames;
             }
 
             private bool TryValidateObject(object obj, ICollection<ValidationResult> results)

@@ -22,6 +22,10 @@ Usage of the recursive validation is nearly identical to using the standard vali
     
 There are more examples in the [example](https://github.com/tgharold/RecursiveDataAnnotationsValidation/tree/master/examples) and [test](https://github.com/tgharold/RecursiveDataAnnotationsValidation/tree/master/test) projects.
 
+### Member names
+
+The member name of a nested error is the path from the root object: `Customer.Address.Zip`, `Lines[1].Quantity`. The message is the one that the nested object produced, so it names only its own property. An error of a whole nested object, such as one from a class-level attribute or from `IValidatableObject.Validate` with no member names, gets the path of the object as its member name: `Lines[1]`. An error of the root object keeps the member names it has, so a class-level error of the root has none.
+
 ### SkipRecursiveValidationAttribute
 
 The [`[SkipRecursiveValidation]`](https://github.com/tgharold/RecursiveDataAnnotationsValidation/blob/master/src/RecursiveDataAnnotationsValidation/Attributes/SkipRecursiveValidation.cs) attribute can be used on properties where you do not want to recursively validate.  An example of this can be seen in [SkippedChildrenExample.cs](https://github.com/tgharold/RecursiveDataAnnotationsValidation/blob/master/test/RecursiveDataAnnotationsValidation.Tests/TestModels/SkippedChildrenExample.cs).
