@@ -120,8 +120,9 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// Computed properties need one more check. A property can return a new, equal object on
         /// each read, such as `Point Origin => new Point(0, 0)` on a record or
         /// `Money Zero => new Money(0)` on a value object. Each read is a new reference, so a
-        /// reference check alone never stops, and the walk overflows the stack. v2.2.0 stopped
-        /// these only because of value equality.
+        /// reference check alone never stops. Before 3.0 the walk overflowed the stack. Now it goes
+        /// on until the maximum depth and fails the validation (see MaxDepthTests.ComputedProperties).
+        /// v2.2.0 stopped these only because of value equality.
         /// So the validator keeps a second list: the objects on the path from the root to the
         /// current object whose type overrides Equals. When an object's type overrides Equals,
         /// and the object Equals an object of a related type on that list, the validator:
@@ -460,7 +461,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
             }
 
             // Guard. On v2.2.0, value equality stopped each chain at the second Money(0). If this
-            // breaks, the stack overflows and kills the test host (see the Origin guards).
+            // breaks, the walk goes on to the maximum depth and the validation fails with a depth
+            // error. Before 3.0 it overflowed the stack and killed the test host (see the Origin guards).
             [Fact]
             public void Value_object_property_that_returns_a_new_equal_object_terminates()
             {
@@ -501,7 +503,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
             // Guard. On v2.2.0, value equality stopped the chain at the second LazyMoney(0). A
             // rule that asks whether the property is computed misses this one, because the
-            // property is stored, and the walk overflows the stack.
+            // property is stored, and the walk goes on to the maximum depth, where the validation
+            // fails. Before 3.0 it overflowed the stack.
             [Fact]
             public void Stored_sequence_that_yields_new_equal_objects_terminates()
             {
@@ -565,9 +568,10 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
             // Guard. On v2.2.0, value equality stops the walk at the second Origin, because it
             // Equals the first. A reference-equality set alone would never stop: each read is a
-            // new instance, so the walk recurses until the stack overflows. A stack overflow
-            // cannot be caught and kills the test host, so if this guard breaks, the whole test
-            // run crashes instead of reporting one failure.
+            // new instance, so the walk goes on until the maximum depth, and the validation fails
+            // with a depth error. Before 3.0 the walk recursed until the stack overflowed. A stack
+            // overflow cannot be caught and kills the test host, so a broken guard crashed the whole
+            // test run instead of reporting one failure.
             // See: https://learn.microsoft.com/dotnet/api/system.stackoverflowexception
             [Fact]
             public void Record_property_that_returns_a_new_equal_record_terminates()
