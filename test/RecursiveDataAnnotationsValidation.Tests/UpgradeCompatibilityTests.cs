@@ -810,8 +810,9 @@ namespace RecursiveDataAnnotationsValidation.Tests
             }
 
             /// <summary>
-            /// Only public instance and static properties are walked. Non-public properties,
-            /// write-only properties and indexers are not.
+            /// Only public instance properties are walked. Non-public properties, write-only
+            /// properties and indexers are not. Up to 2.3.3, public static properties were walked
+            /// too (see OddShapeTests.MembersWithSideEffects).
             /// See: https://learn.microsoft.com/dotnet/api/system.type.getproperties
             /// </summary>
             [Fact]

@@ -874,8 +874,11 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
         /// <summary>
         /// Members that the validator reads, with effects a model author may not expect.
-        /// - A static property is walked, like an instance one. A shared static object that is
-        ///   invalid fails every model of that type. Type.GetProperties includes static members.
+        /// - A static property is not walked. It holds data of the type, not of the model, and
+        ///   Validator, MVC model validation and System.Text.Json all ignore static properties.
+        ///   Up to 2.3.3 it was walked, because Type.GetProperties() with no arguments returns
+        ///   public static properties too, so a shared static object that was invalid failed
+        ///   every model of that type. Since 3.0 the walk asks for public instance properties only.
         /// - A Lazy&lt;T&gt; property is walked through Value, so validation runs the factory.
         /// - A Task&lt;T&gt; property is walked through Result. A completed task is fine.
         ///   See the class summary for a task that has not completed.
@@ -903,13 +906,38 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 public int Radius { get; set; }
             }
 
+            public class WithStaticList
+            {
+                public static List<Leaf> All { get; } = new List<Leaf> { new Leaf() };
+            }
+
             [Fact]
-            public void Invalid_static_property_fails_every_instance()
+            public void Invalid_static_property_is_not_walked()
             {
                 var (valid, errors) = Run(new WithStatic());
 
-                Assert.False(valid);
-                Assert.Equal(ResultText.Expect("Shared.Name" + NameRequired), errors);
+                Assert.True(valid);
+                Assert.Empty(errors);
+            }
+
+            [Fact]
+            public void Static_collection_property_is_not_enumerated()
+            {
+                var (valid, errors) = Run(new WithStaticList());
+
+                Assert.True(valid);
+                Assert.Empty(errors);
+            }
+
+            // The same for an item. A type whose only object property is static has nothing to
+            // walk, so its items are not even enumerated.
+            [Fact]
+            public void Static_property_of_an_item_is_not_walked()
+            {
+                var (valid, errors) = Run(new Holder<List<WithStatic>> { Value = new List<WithStatic> { new WithStatic() } });
+
+                Assert.True(valid);
+                Assert.Empty(errors);
             }
 
             [Fact]
