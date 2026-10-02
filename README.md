@@ -43,8 +43,8 @@ The [`[SkipRecursiveValidation]`](https://github.com/tgharold/RecursiveDataAnnot
 - An item that is a collection is validated as an object first, so its own attributes and `IValidatableObject.Validate` run, then its items.
 - A collection of simple values, such as `List<int>` or `string[]`, is not enumerated, because it cannot hold an invalid object.
 - A collection that you pass to the validator as the root object is not enumerated. Wrap it in an object with a property.
-- A collection that is a struct, such as `ImmutableArray<T>`, is validated when it is an item of another collection, but not when a property holds it. The validator only reads properties of reference types.
-- The validator runs each collection it enumerates, so a lazy sequence, such as a LINQ query or an iterator, runs during validation. A sequence that never ends makes validation hang. The validator does not catch exceptions, so an exception that a collection throws when it is enumerated reaches your code. A struct item that equals its default value, such as an `ImmutableArray<T>` or an `ArraySegment<T>` that nobody set, is skipped, because it holds nothing and enumerating it throws.
+- A collection that is a struct, such as `ImmutableArray<T>`, is validated when a property holds it and when it is an item of another collection: `Lines[0].Sku`. A struct that is not a collection, such as a `Money`, is not walked, because the validator only reads properties of reference types.
+- The validator runs each collection it enumerates, so a lazy sequence, such as a LINQ query or an iterator, runs during validation. A sequence that never ends makes validation hang. The validator does not catch exceptions, so an exception that a collection throws when it is enumerated reaches your code. A struct collection, as an item or as a property, that equals its default value, such as an `ImmutableArray<T>` or an `ArraySegment<T>` that nobody set, is skipped, because it holds nothing and enumerating it throws.
 
 ### Framework types that are not walked
 
