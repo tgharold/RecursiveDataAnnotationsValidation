@@ -29,6 +29,7 @@ The [`[SkipRecursiveValidation]`](https://github.com/tgharold/RecursiveDataAnnot
 ### Shared objects, cycles and computed properties
 
 - Each object is validated once, even when several properties point to it. This also stops cycles, such as a child that points back to its parent.
+- A struct is the exception to the first rule. The validator cannot tell that two copies of a struct are the same value, so it reports an invalid struct once for each route that reaches it. For example, two properties that hold the same array of structs report each struct twice, and so does a `List<object>` that holds an `ArraySegment<T>` of structs, because the segment returns its items by enumeration and through its `Array` property. The error is not lost, but the result list has a duplicate with a different member name. For a collection type of your own, mark the property that repeats the items with `[SkipRecursiveValidation]`.
 - Objects are compared by reference. Two separate objects that are `Equals` to each other, such as records with the same values or entities with the same `Id`, are each validated.
 - Public static properties are walked, as well as instance properties.
 - A property that builds a new object on each read, such as `public Money Zero => new Money(0)`, could make the walk go on forever. So when an object's type overrides `Equals`, and the object equals an object of the same type, a base type or a derived type on its own path from the root, the validator checks that object's own attributes but does not walk into its properties. An invalid object below it is not reached.
@@ -43,7 +44,7 @@ The [`[SkipRecursiveValidation]`](https://github.com/tgharold/RecursiveDataAnnot
 - A collection of simple values, such as `List<int>` or `string[]`, is not enumerated, because it cannot hold an invalid object.
 - A collection that you pass to the validator as the root object is not enumerated. Wrap it in an object with a property.
 - A collection that is a struct, such as `ImmutableArray<T>`, is validated when it is an item of another collection, but not when a property holds it. The validator only reads properties of reference types.
-- The validator runs each collection it enumerates, so a lazy sequence, such as a LINQ query or an iterator, runs during validation. A sequence that never ends makes validation hang. The validator does not catch exceptions, so an exception that a collection throws when it is enumerated reaches your code. A default `ImmutableArray<T>` item is skipped, because it holds nothing.
+- The validator runs each collection it enumerates, so a lazy sequence, such as a LINQ query or an iterator, runs during validation. A sequence that never ends makes validation hang. The validator does not catch exceptions, so an exception that a collection throws when it is enumerated reaches your code. A struct item that equals its default value, such as an `ImmutableArray<T>` or an `ArraySegment<T>` that nobody set, is skipped, because it holds nothing and enumerating it throws.
 
 ### Framework types that are not walked
 
