@@ -172,13 +172,17 @@ namespace RecursiveDataAnnotationsValidation
 
         //validatedObjects holds every object visited so far, compared by reference.
         //equalityPath holds the objects on the path from the root to this object whose type overrides Equals.
+        //enumerateItems is true for an item of a collection. If the item is itself a collection, its
+        //items are validated too. A collection that a property holds is enumerated by the caller, and
+        //the root object is never enumerated.
         private bool TryValidateObjectRecursive(
             object obj,
             ICollection<ValidationResult> validationResults,
             ISet<object> validatedObjects,
             List<object> equalityPath,
             IServiceProvider serviceProvider,
-            IDictionary<object, object> validationContextItems
+            IDictionary<object, object> validationContextItems,
+            bool enumerateItems = false
             )
         {
             var type = obj.GetType();
@@ -211,6 +215,33 @@ namespace RecursiveDataAnnotationsValidation
 
             var result = TryValidateObject(obj, validationResults, serviceProvider, validationContextItems);
 
+            //An item that is a collection is validated as an object above, so its own attributes run.
+            //Then its items are validated, before its properties are walked. An object that the
+            //collection also returns from a property, such as Array.SyncRoot, is then reported at its
+            //index (Value[0][0]) and not through the property (Value[0].SyncRoot[0]).
+            //A collection of leaf types is skipped, like a collection that a property holds. A default
+            //ImmutableArray is skipped, because enumerating it throws and it holds nothing.
+            var enumeratedItems = false;
+            if (enumerateItems
+                && obj is IEnumerable items
+                && !type.IsCollectionOfLeafType()
+                && !obj.IsDefaultImmutableArray())
+            {
+                enumeratedItems = true;
+                if (!TryValidateItems(
+                    items,
+                    "",
+                    validationResults,
+                    validatedObjects,
+                    equalityPath,
+                    serviceProvider,
+                    validationContextItems
+                    ))
+                {
+                    result = false;
+                }
+            }
+
             //IsWalked leaves out properties declared by framework types that throw or never end when
             //read, such as Uri.Segments on a relative Uri, DirectoryInfo.Root, or the properties of
             //a Thread or Process read from the wrong thread or process (see IsUnsafeToWalk)
@@ -231,40 +262,24 @@ namespace RecursiveDataAnnotationsValidation
                         continue;
 
                     case IEnumerable asEnumerable:
-                        var arrayIndex = -1;
-                        foreach (var item in asEnumerable)
-                        {
-                            arrayIndex++;
+                        //an item that was enumerated above can return itself from a property, such as
+                        //Array.SyncRoot, and enumerating it a second time would find nothing new
+                        if (enumeratedItems && ReferenceEquals(value, obj)) continue;
 
-                            //NOTE: Possibly should have a separate case for Dictionary which reports on the key
-                            
-                            if (item == null) continue;
-                            nestedResults = new List<ValidationResult>();
-                            if (!TryValidateObjectRecursive(
-                                item, 
-                                nestedResults, 
-                                validatedObjects, 
-                                equalityPath,
-                                serviceProvider,
-                                validationContextItems
-                                ))
-                            {
-                                result = false;
-                                foreach (var validationResult in nestedResults)
-                                {
-                                    var property1 = property;
-                                    validationResults.Add(
-                                    new ValidationResult(
-                                        validationResult.ErrorMessage, 
-                                        validationResult.MemberNames
-                                            .Select(x => $"{property1.Name}[{arrayIndex}].{x}")
-                                            .ToList()
-                                        ));
-                                }
-                            }
+                        if (!TryValidateItems(
+                            asEnumerable,
+                            property.Name,
+                            validationResults,
+                            validatedObjects,
+                            equalityPath,
+                            serviceProvider,
+                            validationContextItems
+                            ))
+                        {
+                            result = false;
                         }
                         break;
-                    
+
                     default:
                         nestedResults = new List<ValidationResult>();
                         if (!TryValidateObjectRecursive(
@@ -296,6 +311,64 @@ namespace RecursiveDataAnnotationsValidation
             return result;
         }
         
+        //Validates each item of a collection. The result of an item is added to validationResults with
+        //its member names prefixed by the property name, if there is one, and the index of the item.
+        private bool TryValidateItems(
+            IEnumerable items,
+            string propertyName,
+            ICollection<ValidationResult> validationResults,
+            ISet<object> validatedObjects,
+            List<object> equalityPath,
+            IServiceProvider serviceProvider,
+            IDictionary<object, object> validationContextItems
+            )
+        {
+            var result = true;
+            var arrayIndex = -1;
+            foreach (var item in items)
+            {
+                arrayIndex++;
+
+                //NOTE: Possibly should have a separate case for Dictionary which reports on the key
+
+                if (item == null) continue;
+                var nestedResults = new List<ValidationResult>();
+                if (!TryValidateObjectRecursive(
+                    item,
+                    nestedResults,
+                    validatedObjects,
+                    equalityPath,
+                    serviceProvider,
+                    validationContextItems,
+                    enumerateItems: true
+                    ))
+                {
+                    result = false;
+                    var index = arrayIndex;
+                    foreach (var validationResult in nestedResults)
+                    {
+                        validationResults.Add(
+                            new ValidationResult(
+                                validationResult.ErrorMessage,
+                                validationResult.MemberNames
+                                    .Select(x => ItemMemberName(propertyName, index, x))
+                                    .ToList()
+                                ));
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        //The name of a member of an item: Items[1].Name. The member name of an item that is a
+        //collection starts with its own index, so the indexes are joined without a dot: Items[1][0].Name.
+        private static string ItemMemberName(string propertyName, int index, string memberName)
+        {
+            var separator = memberName.StartsWith("[", StringComparison.Ordinal) ? "" : ".";
+            return propertyName + "[" + index + "]" + separator + memberName;
+        }
+
         /* Note 1:
          *
          * Background information of why we don't use ValidationContext.ObjectInstance here, even though it is tempting.

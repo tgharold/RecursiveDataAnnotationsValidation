@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -44,6 +45,11 @@ namespace RecursiveDataAnnotationsValidation.Extensions
             typeof(Process),        // StartInfo and others throw for a process this object did not start
         };
 
+        // The types IsLeafType is deciding on this thread. A type that yields itself, such as
+        // `sealed class Node : IEnumerable<Node>`, asks about its own type while it is being decided.
+        [ThreadStatic]
+        private static HashSet<Type> _typesBeingChecked;
+
         private static int _typeDescriptorVersion;
 
         static TypeExtensions()
@@ -72,6 +78,10 @@ namespace RecursiveDataAnnotationsValidation.Extensions
         /// 2. No validation attribute on any of its properties.
         /// 3. It does not implement IValidatableObject.
         /// 4. No property the validator walks into (see <see cref="IsWalked"/>).
+        /// 5. If it is a collection, it is a collection of leaf types (see <see cref="IsCollectionOfLeafType"/>),
+        ///    because the validator enumerates an item that is a collection, and the items it
+        ///    yields can have attributes of their own. A collection of an unknown item type, such as
+        ///    a non-generic one, is not a leaf type.
         /// Checks 1 and 2 use TypeDescriptor, like Validator, so attributes added at runtime count.
         /// </summary>
         public static bool IsLeafType(this Type type)
@@ -82,7 +92,22 @@ namespace RecursiveDataAnnotationsValidation.Extensions
             if (LeafTypeCache.TryGetValue(type, out var cached) && cached.Version == version)
                 return cached.IsLeaf;
 
-            var isLeaf = FindIsLeafType(type);
+            var typesBeingChecked = _typesBeingChecked ?? (_typesBeingChecked = new HashSet<Type>());
+
+            // A type that is already being decided is not a leaf type. That is the safe answer,
+            // because the validator then looks at the type instead of skipping it.
+            if (!typesBeingChecked.Add(type)) return false;
+
+            bool isLeaf;
+            try
+            {
+                isLeaf = FindIsLeafType(type);
+            }
+            finally
+            {
+                typesBeingChecked.Remove(type);
+            }
+
             LeafTypeCache[type] = (version, isLeaf);
             return isLeaf;
         }
@@ -127,6 +152,21 @@ namespace RecursiveDataAnnotationsValidation.Extensions
                 && UnsafeToWalkTypes.Any(unsafeType => unsafeType.IsAssignableFrom(t)));
         }
 
+        /// <summary>
+        /// True for a default ImmutableArray, such as an array field that nobody set. It wraps null,
+        /// so enumerating it throws InvalidOperationException, and it holds nothing to validate.
+        /// The type is found by name, because the library does not reference System.Collections.Immutable.
+        /// </summary>
+        public static bool IsDefaultImmutableArray(this object obj)
+        {
+            var type = obj.GetType();
+
+            return type.IsValueType
+                && type.IsGenericType
+                && type.GetGenericTypeDefinition().FullName == "System.Collections.Immutable.ImmutableArray`1"
+                && (bool)type.GetProperty("IsDefault").GetValue(obj, null);
+        }
+
         private static bool IsInSystemNamespace(Type type)
         {
             var ns = type.Namespace;
@@ -148,7 +188,8 @@ namespace RecursiveDataAnnotationsValidation.Extensions
             return (type.IsValueType || type.IsSealed)
                 && !HasValidationAttributes(type)
                 && !typeof(IValidatableObject).IsAssignableFrom(type)
-                && !type.GetProperties().Any(IsWalked);
+                && !type.GetProperties().Any(IsWalked)
+                && (!typeof(IEnumerable).IsAssignableFrom(type) || type.IsCollectionOfLeafType());
         }
 
         /// <summary>
