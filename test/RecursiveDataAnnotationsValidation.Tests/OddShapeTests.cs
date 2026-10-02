@@ -24,8 +24,9 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// - An open test. It is skipped and states the behavior a fix would give.
     /// Every result below is the same on release 2.2.0 and on the current code, except the
     /// framework types in MembersThatThrow, which are no longer walked.
-    /// Not covered, because it stops the test run: a Task that has not completed makes the walk
-    /// read Task.Result, which waits forever.
+    /// Not covered here, because it stops the test run: a Task that has not completed makes the
+    /// walk read Task.Result, which waits forever. The open decision, with skipped specs, is in
+    /// TaskPropertyTests.
     /// </summary>
     public class OddShapeTests
     {
