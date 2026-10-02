@@ -8,6 +8,7 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
 
     <Title>Recursive DataAnnotations Validation</Title>
+    <Description>Validates a whole object graph with DataAnnotations attributes, including nested objects and the items of collections. Each object is validated once, so cycles stop. Use [SkipRecursiveValidation] to leave out a property.</Description>
     <Authors>Thomas Harold</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/tgharold/RecursiveDataAnnotationsValidation</RepositoryUrl>

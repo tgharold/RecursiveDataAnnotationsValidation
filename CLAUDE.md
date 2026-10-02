@@ -51,7 +51,8 @@ dotnet test test/RecursiveDataAnnotationsValidation.Tests/RecursiveDataAnnotatio
 
 ## Key Files to Understand
 
-- `RecursiveDataAnnotationValidator.cs` - Main implementation that handles recursive object validation
+- `RecursiveDataAnnotationValidator.cs` - Main implementation. The nested class `GraphWalk` walks the object graph.
+- `Extensions/TypeExtensions.cs` - Decides which types and properties the walk reads (`IsLeafType`, `GetWalkedProperties`)
 - `SkipRecursiveValidation.cs` - Attribute for excluding properties from recursive validation
 - Test models in `test/RecursiveDataAnnotationsValidation.Tests/TestModels/` show various usage patterns
 
@@ -62,13 +63,14 @@ dotnet test test/RecursiveDataAnnotationsValidation.Tests/RecursiveDataAnnotatio
 
 ## Development Notes
 
-The recursive validator handles:
-1. Cyclical object references to prevent infinite loops
-2. Collections (IEnumerable) with recursive validation of items
-3. Null value handling for nested objects and collections
-4. Proper error message formatting that includes property paths
+The validator walks the graph breadth first, with one queue and no recursion. It reads public instance properties by reflection.
 
-The validator uses reflection to examine object properties and recursively validate nested objects.
+1. Each object is validated once, compared by reference, so cycles and shared objects stop. The error names the shortest path to the object.
+2. Collections (`IEnumerable`) are enumerated, and each item is validated. An item that is a collection is enumerated too.
+3. The maximum depth is 128 levels. Each property and each collection index is one level. A deeper object fails the validation with one error.
+4. Member names are paths from the root, such as `Lines[1].Quantity`.
+
+The README describes the behavior that callers see. Keep it in step with the code.
 
 ## Changelog
 
