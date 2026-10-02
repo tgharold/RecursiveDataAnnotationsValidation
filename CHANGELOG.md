@@ -14,9 +14,10 @@ Breaking changes are marked **BREAKING**.
 
 ### Fixed
 
+- A struct collection that a property holds, such as `ImmutableArray<T>` or a struct of your own that implements `IEnumerable<T>`, is now validated. Before, the validator skipped every property whose type is a struct, so an invalid object inside passed, although the same struct was validated as an item of a list. The error is reported like one for a class collection, for example `Lines[0].Sku`. A model that passed before can fail now. This includes an item of a list, or the value of a dictionary, that holds such a struct. It was skipped before as having nothing to walk. A struct property that is not a collection, such as a `Money`, is still not walked.
 - Objects inside an item that is itself a collection are now validated. Before, a `List<List<T>>`, a `List<HashSet<T>>`, an `object[]` that holds a list, and a list of a sealed or struct collection such as `ImmutableList<T>` passed validation even when an object inside was invalid. The error is reported with the index of each level, for example `Value[0][0].Name`. A model that passed before can fail now.
 - An item that is a collection is still validated as an object first, so its own attributes and `IValidatableObject.Validate` run, as before. Its items are then validated as well.
-- A struct item that equals its default value, such as an `ImmutableArray<T>` or an `ArraySegment<T>` that nobody set, is skipped, because it holds nothing and enumerating it throws.
+- A struct item, or a property declared as a struct, that is its default value, such as an `ImmutableArray<T>` or an `ArraySegment<T>` that nobody set, is skipped, because it holds nothing and enumerating it throws. The validator compares the memory of the struct with its default, and does not call the `Equals` of your struct, which can say "equal" for a struct that holds objects, or throw.
 
 ### Changed
 
@@ -26,10 +27,9 @@ Breaking changes are marked **BREAKING**.
   - `LinkedList<T>`: `Value[0].First.List[1].Name` is now `Value[0][1].Name`.
   - `SortedSet<T>`: `Value[0].Min.Name` is now `Value[0][0].Name`.
   - A collection of your own with a property that returns its items, such as `View`: `Value[0].View[0].Name` is now `Value[0][0].Name`.
-- **BREAKING** An item that is a collection is now enumerated, so a lazy sequence in an item runs, as it does when a property holds it. An item that throws when enumerated now throws from validation, and an item that never ends makes validation hang. To avoid it, mark the property that holds the collection with `[SkipRecursiveValidation]`.
+- **BREAKING** An item that is a collection is now enumerated, so a lazy sequence in an item runs, as it does when a property holds it. An item that throws when enumerated now throws from validation, and an item that never ends makes validation hang. The same holds for a struct collection that a property holds, such as `ImmutableArray<T>`: one that throws when enumerated now throws from validation, and one that builds new objects on each read stops at the maximum depth and fails the validation. To avoid it, mark the property that holds the collection with `[SkipRecursiveValidation]`.
 - A deeply nested collection uses more of the stack. On a 1 MB stack, a chain of `List<object>` that holds the next list passes at 1,100 levels and overflows at 1,200, which ends the process (net8.0, macOS, Release). Before, such a list passed without being enumerated. The maximum depth of 128 now stops the walk long before the stack is full.
 - The NuGet package title now reads "Recursive DataAnnotations Validation". It was misspelled "Recurisive".
-- Known limit: a struct collection such as `ImmutableArray<T>` is validated when it is an item, but not yet when a property holds it.
 - Known limit: an invalid struct that an item collection returns by enumeration and also through one of its properties is reported twice, with two member names, for example `Value[0][0].Text` and `Value[0].Array[0].Text` for an `ArraySegment<T>`. The validator cannot match two copies of a struct by reference. A struct that two properties hold was already reported twice. Objects of a class are reported once.
 
 ## 2.3.3 - 2026-10-01

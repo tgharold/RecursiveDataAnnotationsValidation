@@ -371,5 +371,78 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.EndsWith($" | {TooDeep}", errors[0]);
             }
         }
+
+#if NET8_0_OR_GREATER
+        /// <summary>
+        /// A struct collection that a property holds, such as ImmutableArray. It counts like any
+        /// other collection: one level for the property and one for the index. System.Collections.Immutable
+        /// is not part of net481.
+        /// </summary>
+        public class StructCollectionProperties
+        {
+            public class ImmutableNode
+            {
+                public System.Collections.Immutable.ImmutableArray<ImmutableNode> Children { get; set; }
+
+                [Required(ErrorMessage = "Name is required")]
+                public string Name { get; set; }
+            }
+
+            // Builds from the bottom: a chain of `levels` nodes below the root.
+            private static ImmutableNode ImmutableTree(int levels, string bottomName)
+            {
+                var node = new ImmutableNode { Name = bottomName };
+                for (var i = 0; i < levels; i++)
+                {
+                    node = new ImmutableNode
+                    {
+                        Name = "ok",
+                        Children = System.Collections.Immutable.ImmutableArray.Create(node),
+                    };
+                }
+
+                return node;
+            }
+
+            /// <summary>
+            /// A property that builds a new struct collection of new objects on each read. Before the
+            /// limit, this overflowed the stack, which ends the process.
+            /// </summary>
+            public class Spawner
+            {
+                public System.Collections.Immutable.ImmutableArray<Spawner> Next =>
+                    System.Collections.Immutable.ImmutableArray.Create(new Spawner());
+            }
+
+            [Fact]
+            public void Tree_64_levels_deep_is_validated_to_the_bottom()
+            {
+                var (valid, errors) = Run(ImmutableTree(64, null));
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect($"{ChildrenPath(64)}.Name | Name is required"), errors);
+            }
+
+            [Fact]
+            public void Tree_65_levels_deep_fails_at_the_65th_child()
+            {
+                var (valid, errors) = Run(ImmutableTree(65, null));
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect($"{ChildrenPath(65)} | {TooDeep}"), errors);
+            }
+
+            [Fact]
+            public void Property_that_builds_a_new_struct_collection_on_each_read_fails_at_the_limit()
+            {
+                var (valid, errors) = Run(new Spawner());
+
+                Assert.False(valid);
+                Assert.Equal(
+                    ResultText.Expect($"{string.Join(".", Enumerable.Repeat("Next[0]", 65))} | {TooDeep}"),
+                    errors);
+            }
+        }
+#endif
     }
 }

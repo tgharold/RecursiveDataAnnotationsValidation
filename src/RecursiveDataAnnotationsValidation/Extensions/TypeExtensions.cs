@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Threading;
 using RecursiveDataAnnotationsValidation.Attributes;
@@ -80,7 +81,7 @@ namespace RecursiveDataAnnotationsValidation.Extensions
         /// <summary>
         /// True when validating an item of this type can never produce a result. A Nullable&lt;T&gt;
         /// is checked as T. The type must be a value type or a sealed class, so an item cannot be
-        /// a derived type with its own attributes. It must also pass all four checks:
+        /// a derived type with its own attributes. It must also pass all five checks:
         /// 1. No validation attribute on the type.
         /// 2. No validation attribute on any of its properties.
         /// 3. It does not implement IValidatableObject.
@@ -121,13 +122,14 @@ namespace RecursiveDataAnnotationsValidation.Extensions
 
         /// <summary>
         /// True for a property the validator walks into: readable, not an indexer, not marked
-        /// [SkipRecursiveValidation], of a reference type other than string, and not declared by a
-        /// framework type whose properties are unsafe to read (see <see cref="IsUnsafeToWalk"/>).
+        /// [SkipRecursiveValidation], of a reference type other than string or of a struct that is a
+        /// collection of items that can have attributes, and not declared by a framework type whose
+        /// properties are unsafe to read (see <see cref="IsUnsafeToWalk"/>).
         /// </summary>
         public static bool IsWalked(this PropertyInfo property)
         {
             return property.PropertyType != typeof(string)
-                && !property.PropertyType.IsValueType
+                && IsWalkedType(property.PropertyType)
                 && property.CanRead
                 && property.GetIndexParameters().Length == 0
                 && !property.IsDefined(typeof(SkipRecursiveValidationAttribute), false)
@@ -165,13 +167,32 @@ namespace RecursiveDataAnnotationsValidation.Extensions
         /// A default struct collection usually holds nothing to validate, and enumerating one throws:
         /// InvalidOperationException for these two framework types, NullReferenceException for a
         /// struct that wraps an array. The validator skips it, so a model that has an unset struct
-        /// field does not start to throw. Equality is the struct's own Equals.
+        /// field does not start to throw.
+        /// The struct is compared with default(T) by its memory. The Equals of the caller's type is
+        /// not called: it can say "equal" for a struct that holds objects, such as one that compares
+        /// only an Id, which would let invalid objects pass, and it can throw. A struct with no
+        /// fields is always default.
+        /// See: https://learn.microsoft.com/dotnet/api/system.runtime.compilerservices.runtimehelpers.equals
         /// </summary>
         public static bool IsDefaultStruct(this object obj)
         {
             var type = obj.GetType();
 
-            return type.IsValueType && obj.Equals(DefaultValues.GetOrAdd(type, FormatterServices.GetUninitializedObject));
+            return type.IsValueType
+                && RuntimeHelpers.Equals(obj, DefaultValues.GetOrAdd(type, FormatterServices.GetUninitializedObject));
+        }
+
+        // A property of a reference type is walked. A property of a struct is not, because a struct such
+        // as a Point or a Money has nothing to walk into. The exception is a struct that is a collection
+        // of items that can have attributes, such as ImmutableArray<T> of a class, because the same
+        // struct is enumerated when it is an item of another collection, and a model must not pass
+        // because the collection sits one level higher. A Nullable<T> is checked as T.
+        private static bool IsWalkedType(Type type)
+        {
+            type = Nullable.GetUnderlyingType(type) ?? type;
+
+            return !type.IsValueType
+                || (typeof(IEnumerable).IsAssignableFrom(type) && !type.IsCollectionOfLeafType());
         }
 
         private static bool IsInSystemNamespace(Type type)

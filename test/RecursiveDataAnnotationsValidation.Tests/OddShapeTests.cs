@@ -29,7 +29,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// - A spec. It is not skipped and fails until the fix lands. It states the behavior the fix gives.
     /// Every result below is the same on release 2.2.0 and on the current code, except the
     /// framework types in MembersThatThrow, which are no longer walked, and the collections in
-    /// CollectionsInsideCollections, which 2.4.0 enumerates.
+    /// CollectionsInsideCollections, which 3.0 enumerates.
     /// Not covered here, because it stops the test run: a Task that has not completed makes the
     /// walk read Task.Result, which waits forever. The open decision, with skipped specs, is in
     /// TaskPropertyTests.
@@ -65,7 +65,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// that returns the collection itself. The validator walked that property and enumerated it,
         /// so a jagged array reported the path "Value[0].SyncRoot[0].Name". A List of Dictionary
         /// worked through the public Values property, with the path "Value[0].Values[0].Name".
-        /// Release 2.4.0 enumerates an item that is a collection, and reports the index of each level:
+        /// Release 3.0 enumerates an item that is a collection, and reports the index of each level:
         /// "Value[0][0].Name". The tests in this class state that behavior. Most fail on 2.3.3 and
         /// earlier: the shapes that passed silently report nothing, and the shapes that worked by
         /// accident report a different path. The guards for null items, empty collections and
@@ -330,8 +330,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
             }
 
 #if NET8_0_OR_GREATER
-            // ImmutableArray is a struct. See the limitation guards in StructsAreNotWalked for the
-            // same type held in a property.
+            // ImmutableArray is a struct. See StructCollectionPropertyTests for the same type held
+            // in a property.
             // See: https://learn.microsoft.com/dotnet/api/system.collections.immutable.immutablearray-1
             [Fact]
             public void List_of_immutable_arrays_is_validated()
@@ -489,7 +489,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
         ///   nothing after the dot. Code that builds the path must not throw on null.
         /// - A member name that starts with "[", such as "[Totals]", is a name the item chose. It
         ///   is not the index of a nested collection, so the path keeps the dot: "Value[0].[Totals]".
-        /// The tests also run on 2.3.3, which gives the same paths. Release 2.4.0 first read the
+        /// The tests also run on 2.3.3, which gives the same paths. Release 3.0 first read the
         /// name to decide whether it was an index, and threw NullReferenceException on null.
         /// See: https://learn.microsoft.com/dotnet/api/system.componentmodel.dataannotations.validationcontext.membername
         /// </summary>
@@ -536,7 +536,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             }
 
             // In a nested collection the path has the index of each level, then the empty name.
-            // Nested collections are enumerated from 2.4.0, so 2.3.3 reports nothing here.
+            // Nested collections are enumerated from 3.0, so 2.3.3 reports nothing here.
             [Fact]
             public void Null_member_name_on_an_item_of_a_nested_collection()
             {
@@ -701,10 +701,9 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// Structs. The validator walks into properties of reference types only, so a struct
         /// property is checked for its own validation attributes by Validator when the parent is
         /// validated, but nothing inside the struct is walked. A property of the struct that
-        /// carries an attribute is never checked, and neither are the items of a collection that is
-        /// itself a struct, such as ImmutableArray&lt;T&gt;, when a property holds it. A struct
-        /// collection that is an item of another collection is enumerated since 2.4.0. The planned
-        /// fix for the property case is in StructCollectionPropertyTests.
+        /// carries an attribute is never checked. The exception is a struct that is a collection,
+        /// such as ImmutableArray&lt;T&gt;: its items are validated, as an item of another collection
+        /// and as a property (see StructCollectionPropertyTests).
         /// These are limitation guards. Record structs with positional `[property: ...]`
         /// attributes are a modern way to model a value, so this one may surprise callers.
         /// See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/struct
@@ -755,15 +754,6 @@ namespace RecursiveDataAnnotationsValidation.Tests
             public void Record_struct_property_with_an_attribute_is_not_validated()
             {
                 var (valid, errors) = Run(new Holder<Coordinates> { Value = new Coordinates(200) });
-
-                Assert.True(valid);
-                Assert.Empty(errors);
-            }
-
-            [Fact]
-            public void Struct_collection_items_are_not_validated()
-            {
-                var (valid, errors) = Run(new Holder<LeafBag> { Value = new LeafBag(new Leaf()) });
 
                 Assert.True(valid);
                 Assert.Empty(errors);
