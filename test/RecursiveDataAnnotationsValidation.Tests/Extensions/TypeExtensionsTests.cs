@@ -198,6 +198,72 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
             Assert.True(typeof(string).IsLeafType());
         }
 
+        public class StructBagHolder
+        {
+            public ChildBagStruct Bag { get; set; }
+
+            public ChildBagStruct? MaybeBag { get; set; }
+
+            public PlainPoint Point { get; set; }
+
+            public KeyValuePair<string, Child> Pair { get; set; }
+        }
+
+        // A property of a struct is walked only when the struct is a collection of items that can have
+        // attributes. A struct that is not a collection is not, and neither is a KeyValuePair, which
+        // is not an IEnumerable.
+        [Fact]
+        public void Struct_collection_property_is_walked()
+        {
+            Assert.True(typeof(StructBagHolder).GetProperty(nameof(StructBagHolder.Bag)).IsWalked());
+            Assert.True(typeof(StructBagHolder).GetProperty(nameof(StructBagHolder.MaybeBag)).IsWalked());
+        }
+
+        [Fact]
+        public void Struct_property_that_is_not_a_collection_is_not_walked()
+        {
+            Assert.False(typeof(StructBagHolder).GetProperty(nameof(StructBagHolder.Point)).IsWalked());
+            Assert.False(typeof(StructBagHolder).GetProperty(nameof(StructBagHolder.Pair)).IsWalked());
+        }
+
+        // Check 4 of IsLeafType uses IsWalked. A type whose only walked member is a struct collection
+        // was a leaf type before struct collection properties were walked, and it is not now.
+        [Fact]
+        public void Type_with_a_struct_collection_property_is_not_a_leaf_type()
+        {
+            Assert.False(typeof(SealedStructBagHolder).IsLeafType());
+        }
+
+        public sealed class SealedStructBagHolder
+        {
+            public ChildBagStruct Bag { get; set; }
+        }
+
+#if NET8_0_OR_GREATER
+        public class ImmutableArrayHolder
+        {
+            public System.Collections.Immutable.ImmutableArray<Child> Children { get; set; }
+
+            public System.Collections.Immutable.ImmutableArray<Child>? MaybeChildren { get; set; }
+
+            public System.Collections.Immutable.ImmutableArray<int> Numbers { get; set; }
+        }
+
+        [Fact]
+        public void Immutable_array_property_of_objects_is_walked()
+        {
+            Assert.True(typeof(ImmutableArrayHolder).GetProperty(nameof(ImmutableArrayHolder.Children)).IsWalked());
+            Assert.True(typeof(ImmutableArrayHolder).GetProperty(nameof(ImmutableArrayHolder.MaybeChildren)).IsWalked());
+        }
+
+        // A collection of leaf types has nothing to validate, so its property is not walked.
+        [Fact]
+        public void Immutable_array_property_of_values_is_not_walked()
+        {
+            Assert.False(typeof(ImmutableArrayHolder).GetProperty(nameof(ImmutableArrayHolder.Numbers)).IsWalked());
+        }
+#endif
+
         // A default struct collection holds nothing, and enumerating one throws, so the validator skips it.
         // The check is the struct's own Equals against default(T), so it needs no list of types.
         [Fact]
@@ -231,6 +297,24 @@ namespace RecursiveDataAnnotationsValidation.Tests.Extensions
             Assert.False(((object)new ArraySegment<Child>(new Child[0])).IsDefaultStruct());
             Assert.False(((object)new PlainPoint { X = 1 }).IsDefaultStruct());
             Assert.False(((object)5).IsDefaultStruct());
+        }
+
+        // The check compares the memory of the struct with default(T). It does not call the Equals of
+        // the caller's type, which can say "equal" for a struct that holds objects, or throw.
+        [Fact]
+        public void Struct_whose_Equals_ignores_its_items_is_not_a_default_struct()
+        {
+            var bag = new StructCollectionPropertyTests.StructsWithOddEquals.IdBag(0, new StructCollectionPropertyTests.Leaf());
+
+            Assert.True(bag.Equals(default(StructCollectionPropertyTests.StructsWithOddEquals.IdBag)));
+            Assert.False(((object)bag).IsDefaultStruct());
+        }
+
+        [Fact]
+        public void Struct_whose_Equals_throws_is_checked_without_calling_it()
+        {
+            Assert.True(((object)default(StructCollectionPropertyTests.StructsWithOddEquals.SequenceBag)).IsDefaultStruct());
+            Assert.False(((object)new StructCollectionPropertyTests.StructsWithOddEquals.SequenceBag(new StructCollectionPropertyTests.Leaf())).IsDefaultStruct());
         }
 
         [Fact]

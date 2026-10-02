@@ -315,5 +315,195 @@ namespace RecursiveDataAnnotationsValidation.Tests
             Assert.Empty(errors);
         }
 #endif
+
+        /// <summary>
+        /// Structs whose own Equals is not a reliable test for "nothing was set". The validator skips a
+        /// default struct, because enumerating one can throw, and it must decide that by the memory
+        /// of the struct, not by calling the Equals of the caller's type. A model that Equals its
+        /// default by accident would otherwise pass while it holds invalid objects, and an Equals
+        /// that throws would end validation. The types here are unusual, but a model that passed
+        /// only because of such an Equals is a false pass.
+        /// See: https://learn.microsoft.com/dotnet/api/system.runtime.compilerservices.runtimehelpers.equals
+        /// </summary>
+        public class StructsWithOddEquals
+        {
+            /// <summary>Equals compares the Id only, so a bag with Id 0 equals default(IdBag) whatever it holds.</summary>
+            public readonly struct IdBag : IEnumerable<Leaf>
+            {
+                private readonly Leaf[] _items;
+
+                public IdBag(int id, params Leaf[] items)
+                {
+                    Id = id;
+                    _items = items;
+                }
+
+                public int Id { get; }
+
+                public override bool Equals(object obj) => obj is IdBag other && other.Id == Id;
+
+                public override int GetHashCode() => Id;
+
+                public IEnumerator<Leaf> GetEnumerator() => ((IEnumerable<Leaf>)_items).GetEnumerator();
+
+                IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+            }
+
+            /// <summary>
+            /// Equals compares the items, and throws when it is compared with default(SequenceBag),
+            /// because the default value has no array.
+            /// </summary>
+            public readonly struct SequenceBag : IEnumerable<Leaf>
+            {
+                private readonly Leaf[] _items;
+
+                public SequenceBag(params Leaf[] items)
+                {
+                    _items = items;
+                }
+
+                public override bool Equals(object obj) => obj is SequenceBag other && System.Linq.Enumerable.SequenceEqual(_items, other._items);
+
+                public override int GetHashCode() => 0;
+
+                public IEnumerator<Leaf> GetEnumerator() => ((IEnumerable<Leaf>)_items).GetEnumerator();
+
+                IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+            }
+
+            /// <summary>A struct with no fields. It always equals default, and it enumerates a shared list.</summary>
+            public readonly struct RegistryView : IEnumerable<Leaf>
+            {
+                public static readonly List<Leaf> Registry = new List<Leaf> { new Leaf() };
+
+                public IEnumerator<Leaf> GetEnumerator() => Registry.GetEnumerator();
+
+                IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+            }
+
+            // Guard. On 2.3.3 an interface-typed property was walked and enumerated whatever the
+            // value was. A bag that Equals default by accident must not be skipped there.
+            [Fact]
+            public void Interface_typed_property_holding_a_bag_that_equals_default_is_validated()
+            {
+                var (valid, errors) = Run(new Holder<IEnumerable<Leaf>> { Value = new IdBag(0, new Leaf()) });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Value[0].Name" + NameRequired), errors);
+            }
+
+            [Fact]
+            public void Object_typed_property_holding_a_bag_that_equals_default_is_validated()
+            {
+                var (valid, errors) = Run(new Holder<object> { Value = new IdBag(0, new Leaf()) });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Value[0].Name" + NameRequired), errors);
+            }
+
+            // A field-less struct is a default struct by memory too, and a property of that struct type is
+            // skipped, as a default ImmutableArray is. Declared as an interface it is still enumerated.
+            [Fact]
+            public void Interface_typed_property_holding_a_field_less_struct_collection_is_validated()
+            {
+                var (valid, errors) = Run(new Holder<IEnumerable<Leaf>> { Value = new RegistryView() });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Value[0].Name" + NameRequired), errors);
+            }
+
+            [Fact]
+            public void Object_typed_property_holding_a_field_less_struct_collection_is_validated()
+            {
+                var (valid, errors) = Run(new Holder<object> { Value = new RegistryView() });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Value[0].Name" + NameRequired), errors);
+            }
+
+            [Fact]
+            public void Struct_typed_property_with_a_bag_that_equals_default_is_validated()
+            {
+                var (valid, errors) = Run(new Holder<IdBag> { Value = new IdBag(0, new Leaf()) });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Value[0].Name" + NameRequired), errors);
+            }
+
+            [Fact]
+            public void Struct_item_that_equals_default_is_validated()
+            {
+                var (valid, errors) = Run(new Holder<List<object>> { Value = new List<object> { new IdBag(0, new Leaf()) } });
+
+                Assert.False(valid);
+                Assert.Equal(ResultText.Expect("Value[0][0].Name" + NameRequired), errors);
+            }
+
+            // The Equals of the struct is not called, so one that throws cannot end validation.
+            // Before, a model with such a bag passed on 2.3.3 and threw from 3.0 on.
+            [Fact]
+            public void Struct_typed_property_with_an_Equals_that_throws_is_validated()
+            {
+                var (valid, errors) = Run(new Holder<SequenceBag> { Value = new SequenceBag(new Leaf { Name = "a" }) });
+
+                Assert.True(valid);
+                Assert.Empty(errors);
+            }
+
+            [Fact]
+            public void Interface_typed_property_with_an_Equals_that_throws_is_validated()
+            {
+                var (valid, errors) = Run(new Holder<IEnumerable<Leaf>> { Value = new SequenceBag(new Leaf { Name = "a" }) });
+
+                Assert.True(valid);
+                Assert.Empty(errors);
+            }
+
+            [Fact]
+            public void Struct_item_with_an_Equals_that_throws_is_validated()
+            {
+                var (valid, errors) = Run(new Holder<List<object>> { Value = new List<object> { new SequenceBag(new Leaf { Name = "a" }) } });
+
+                Assert.True(valid);
+                Assert.Empty(errors);
+            }
+
+            [Fact]
+            public void Default_struct_with_an_Equals_that_throws_is_skipped()
+            {
+                var (valid, errors) = Run(new Holder<SequenceBag> { Value = default });
+
+                Assert.True(valid);
+                Assert.Empty(errors);
+            }
+        }
+
+#if NET8_0_OR_GREATER
+        // A dictionary value that is a struct collection. The KeyValuePair item of the dictionary is
+        // walked, and so is the struct collection that its Value property holds.
+        [Fact]
+        public void Dictionary_value_that_is_a_struct_collection_is_validated()
+        {
+            var (valid, errors) = Run(new Holder<Dictionary<string, ImmutableArray<Leaf>>>
+            {
+                Value = new Dictionary<string, ImmutableArray<Leaf>> { ["a"] = ImmutableArray.Create(new Leaf()) },
+            });
+
+            Assert.False(valid);
+            Assert.Equal(ResultText.Expect("Value[0].Value[0].Name" + NameRequired), errors);
+        }
+
+        [Fact]
+        public void Dictionary_value_that_is_a_default_struct_collection_is_valid()
+        {
+            var (valid, errors) = Run(new Holder<Dictionary<string, ImmutableArray<Leaf>>>
+            {
+                Value = new Dictionary<string, ImmutableArray<Leaf>> { ["a"] = default },
+            });
+
+            Assert.True(valid);
+            Assert.Empty(errors);
+        }
+#endif
     }
 }
