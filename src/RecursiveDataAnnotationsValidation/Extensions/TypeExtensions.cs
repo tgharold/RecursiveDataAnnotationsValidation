@@ -152,10 +152,21 @@ namespace RecursiveDataAnnotationsValidation.Extensions
         /// <see cref="IsWalked"/>). A static property is left out: it holds data of the type, not
         /// of the object, and Validator ignores it too. Type.GetProperties() with no arguments
         /// would return public static properties as well.
+        /// For a collection, the properties that a framework type declares are left out too, such as
+        /// Array.SyncRoot, LinkedList.First or Dictionary.Values. The validator enumerates the
+        /// collection, and those properties repeat its items, so a struct item would be reported once
+        /// for each route. A collection that a property holds is only enumerated, so an item or root
+        /// collection is now walked the same way. The properties that a collection type of your own
+        /// adds are still walked.
         /// </summary>
         public static List<PropertyInfo> GetWalkedProperties(this Type type)
         {
-            return type.GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(IsWalked).ToList();
+            var isCollection = typeof(IEnumerable).IsAssignableFrom(type);
+
+            return type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(property => property.IsWalked()
+                    && !(isCollection && IsInSystemNamespace(property.DeclaringType)))
+                .ToList();
         }
 
         /// <summary>

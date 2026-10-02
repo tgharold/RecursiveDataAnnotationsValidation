@@ -219,8 +219,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
         // The items of a struct collection are objects of a class, so the reference check applies to
         // them as to any other object: one that two properties share is validated, and reported, once.
-        // Only an item that is itself a struct is reported once for each route (see
-        // StructItemsReportedTwiceTests).
+        // A struct item has no identity of its own (see StructsReachedByTwoRoutesTests).
         [Fact]
         public void Object_shared_by_two_struct_collection_properties_is_reported_once()
         {

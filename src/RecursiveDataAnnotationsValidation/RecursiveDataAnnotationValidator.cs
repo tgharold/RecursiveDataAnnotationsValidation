@@ -147,6 +147,13 @@ namespace RecursiveDataAnnotationsValidation
             //every object that was validated but not walked, because it Equals an ancestor on its path
             private readonly HashSet<object> stoppedObjects = new HashSet<object>(ObjectReferenceComparer.Instance);
 
+            //every collection that was enumerated, compared by reference. A collection that a second
+            //route reaches is enumerated again, so an item that was added in the meantime, such as by a
+            //Validate method, is found. Its struct items are skipped the second time: a struct has no
+            //identity of its own, so queuedObjects cannot tell that the copy is the same struct, and it
+            //would be reported once for each route. Its class items are dropped by queuedObjects.
+            private readonly HashSet<object> enumeratedCollections = new HashSet<object>(ObjectReferenceComparer.Instance);
+
             private readonly ICollection<ValidationResult> validationResults;
             private readonly IServiceProvider serviceProvider;
             private readonly IDictionary<object, object> validationContextItems;
@@ -229,7 +236,8 @@ namespace RecursiveDataAnnotationsValidation
             }
 
             //Queues each item of a collection. The path of an item is the path of the collection
-            //plus its index, and its depth is itemDepth.
+            //plus its index, and its depth is itemDepth. A collection that was enumerated before skips
+            //its struct items (see enumeratedCollections).
             private void EnqueueItems(
                 IEnumerable items,
                 PathStep collectionPath,
@@ -237,6 +245,8 @@ namespace RecursiveDataAnnotationsValidation
                 EqualsAncestor ancestors
                 )
             {
+                var enumeratedBefore = !enumeratedCollections.Add(items);
+
                 var arrayIndex = -1;
                 foreach (var item in items)
                 {
@@ -245,6 +255,7 @@ namespace RecursiveDataAnnotationsValidation
                     //NOTE: Possibly should have a separate case for Dictionary which reports on the key
 
                     if (item == null) continue;
+                    if (enumeratedBefore && item.GetType().IsValueType) continue;
                     Enqueue(item, collectionPath, null, arrayIndex, itemDepth, ancestors);
                 }
             }
@@ -291,24 +302,22 @@ namespace RecursiveDataAnnotationsValidation
 
                 //A collection that gets here is the root object or an item of another collection. It is
                 //validated as an object above, so its own attributes run. Then its items are queued,
-                //before its properties. An object that the collection also returns from a property,
-                //such as Array.SyncRoot, is then reported at its index (Value[0][0], or [0] for the root)
-                //and not through the property (Value[0].SyncRoot[0]). A collection that a property
-                //holds never gets here: it waits in the queue as a step of its own (see below).
+                //before its properties. A collection that a property holds never gets here: it waits in
+                //the queue as a step of its own (see below).
                 //A collection of leaf types is skipped, like a collection that a property holds. A default
                 //struct, such as an ImmutableArray nobody set, is skipped: it holds nothing and enumerating it throws.
-                var enumeratedItems = false;
                 if (obj is IEnumerable items
                     && !type.IsCollectionOfLeafType()
                     && !obj.IsDefaultStruct())
                 {
-                    enumeratedItems = true;
                     EnqueueItems(items, item.Path, item.Depth + 1, ancestors);
                 }
 
-                //IsWalked leaves out properties declared by framework types that throw or never end when
-                //read, such as Uri.Segments on a relative Uri, DirectoryInfo.Root, or the properties of
-                //a Thread or Process read from the wrong thread or process (see IsUnsafeToWalk)
+                //GetWalkedProperties leaves out properties declared by framework types that throw or never
+                //end when read, such as Uri.Segments on a relative Uri, DirectoryInfo.Root, or the properties
+                //of a Thread or Process read from the wrong thread or process (see IsUnsafeToWalk). For a
+                //collection, it also leaves out the properties that framework types declare, such as
+                //Array.SyncRoot or LinkedList.First, because they repeat the items that were just queued.
                 var properties = type.GetWalkedProperties();
 
                 foreach (var property in properties)
@@ -332,10 +341,6 @@ namespace RecursiveDataAnnotationsValidation
                             continue;
 
                         case IEnumerable asEnumerable:
-                            //an item that was enumerated above can return itself from a property, such as
-                            //Array.SyncRoot, and enumerating it a second time would find nothing new
-                            if (enumeratedItems && ReferenceEquals(value, obj)) continue;
-
                             //the property is one level and the index of each item is another
                             queue.Enqueue(new WorkItem(
                                 asEnumerable,
