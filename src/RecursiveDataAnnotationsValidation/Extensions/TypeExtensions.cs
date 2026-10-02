@@ -137,6 +137,17 @@ namespace RecursiveDataAnnotationsValidation.Extensions
         }
 
         /// <summary>
+        /// The public instance properties of the type that the validator walks (see
+        /// <see cref="IsWalked"/>). A static property is left out: it holds data of the type, not
+        /// of the object, and Validator ignores it too. Type.GetProperties() with no arguments
+        /// would return public static properties as well.
+        /// </summary>
+        public static List<PropertyInfo> GetWalkedProperties(this Type type)
+        {
+            return type.GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(IsWalked).ToList();
+        }
+
+        /// <summary>
         /// True when the type's Equals(object) is not object.Equals, so two different objects
         /// of the type can be equal. Records, structs (through ValueType.Equals) and classes
         /// that override Equals all count.
@@ -216,7 +227,7 @@ namespace RecursiveDataAnnotationsValidation.Extensions
             return (type.IsValueType || type.IsSealed)
                 && !HasValidationAttributes(type)
                 && !typeof(IValidatableObject).IsAssignableFrom(type)
-                && !type.GetProperties().Any(IsWalked)
+                && type.GetWalkedProperties().Count == 0
                 && (!typeof(IEnumerable).IsAssignableFrom(type) || type.IsCollectionOfLeafType());
         }
 

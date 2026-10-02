@@ -309,7 +309,7 @@ namespace RecursiveDataAnnotationsValidation
                 //IsWalked leaves out properties declared by framework types that throw or never end when
                 //read, such as Uri.Segments on a relative Uri, DirectoryInfo.Root, or the properties of
                 //a Thread or Process read from the wrong thread or process (see IsUnsafeToWalk)
-                var properties = type.GetProperties().Where(prop => prop.IsWalked()).ToList();
+                var properties = type.GetWalkedProperties();
 
                 foreach (var property in properties)
                 {
