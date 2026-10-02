@@ -485,12 +485,14 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// - A class-level attribute that passes ValidationContext.MemberName gives a null member
         ///   name, because no member is being validated. This is the usual way to write one.
         ///   The same holds for an IValidatableObject that yields a null member name.
-        ///   The validator prefixes the path to each name, and a null name gives "Value[0]." with
-        ///   nothing after the dot. Code that builds the path must not throw on null.
+        ///   A null name means the item itself, so since 3.0 the member name is the path of the
+        ///   item: "Value[0]". Up to 2.3.3 the validator prefixed the path to each name, and a null
+        ///   name gave "Value[0]." with nothing after the dot. Code that builds the path must not
+        ///   throw on null. See also MemberNameFormatTests.ObjectLevelResults.
         /// - A member name that starts with "[", such as "[Totals]", is a name the item chose. It
         ///   is not the index of a nested collection, so the path keeps the dot: "Value[0].[Totals]".
-        /// The tests also run on 2.3.3, which gives the same paths. Release 3.0 first read the
-        /// name to decide whether it was an index, and threw NullReferenceException on null.
+        /// The bracket tests also run on 2.3.3, which gives the same paths. An early 3.0 build read
+        /// the name to decide whether it was an index, and threw NullReferenceException on null.
         /// See: https://learn.microsoft.com/dotnet/api/system.componentmodel.dataannotations.validationcontext.membername
         /// </summary>
         public class UnusualMemberNames
@@ -523,7 +525,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 var (valid, errors) = Run(new Holder<List<ClassLevelItem>> { Value = new List<ClassLevelItem> { new ClassLevelItem() } });
 
                 Assert.False(valid);
-                Assert.Equal(ResultText.Expect("Value[0]. | The item is not valid."), errors);
+                Assert.Equal(ResultText.Expect("Value[0] | The item is not valid."), errors);
             }
 
             [Fact]
@@ -532,10 +534,10 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 var (valid, errors) = Run(new Holder<List<SelfValidatingItem>> { Value = new List<SelfValidatingItem> { new SelfValidatingItem() } });
 
                 Assert.False(valid);
-                Assert.Equal(ResultText.Expect("Value[0]. | The item is not valid."), errors);
+                Assert.Equal(ResultText.Expect("Value[0] | The item is not valid."), errors);
             }
 
-            // In a nested collection the path has the index of each level, then the empty name.
+            // In a nested collection the path has the index of each level.
             // Nested collections are enumerated from 3.0, so 2.3.3 reports nothing here.
             [Fact]
             public void Null_member_name_on_an_item_of_a_nested_collection()
@@ -546,7 +548,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 });
 
                 Assert.False(valid);
-                Assert.Equal(ResultText.Expect("Value[0][0]. | The item is not valid."), errors);
+                Assert.Equal(ResultText.Expect("Value[0][0] | The item is not valid."), errors);
             }
 
             // A name that starts with a bracket on an item of a nested collection is still a name.

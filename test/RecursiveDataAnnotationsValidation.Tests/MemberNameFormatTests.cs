@@ -12,6 +12,10 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// - The error message is the one the attribute produced on the nested object, unchanged,
     ///   so it names the nested property only ("The Text field is required."), not the path.
     /// - Each error appears once, with one member name.
+    /// - A nested result that names no member is an error of the whole object, such as one from
+    ///   a class-level attribute or from IValidatableObject.Validate. Since 3.0 its member name is
+    ///   the path of the object: "Lines[1]". Before 3.0 it had no member names, so a caller could
+    ///   not tell which object failed. See ObjectLevelResults.
     /// The test compares the complete set of results, so an extra, missing or reworded result
     /// fails it. It sorts both sides first, because reflection does not promise a property order.
     /// See: https://learn.microsoft.com/dotnet/api/system.type.getproperties
@@ -134,9 +138,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
         // - A dictionary item is a KeyValuePair, so its value is reached through ".Value", and the
         //   index is the position in enumeration order, not the key.
         // - A result with two member names gets the prefix on each of them.
-        // - A result with no member names has no path at all once nested. This is a known gap
-        //   (see ValidatorHardeningTests.PrimitiveCollections). If it is fixed, this guard fails
-        //   on purpose, because the format callers see changes.
+        // - A result with no member names gets the path of the item as its member name.
+        //   Before 3.0 it had no path at all.
         // See: https://learn.microsoft.com/dotnet/api/system.collections.generic.keyvaluepair-2
         [Fact]
         public void Collection_items_keep_their_member_names()
@@ -159,10 +162,106 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 "NoteList[1].Text | The Text field is required.",
                 "NoteMap[0].Value.Text | The Text field is required.",
                 "Ranges[0].Low,Ranges[0].High | Low must not exceed High.",
-                " | The range is negative.",
+                "Ranges[0] | The range is negative.",
             };
             var actual = results.Select(r => $"{string.Join(",", r.MemberNames)} | {r.ErrorMessage}");
             Assert.Equal(expected.OrderBy(x => x), actual.OrderBy(x => x));
+        }
+
+        /// <summary>
+        /// Results that belong to a whole object and not to one of its members. Validator gives
+        /// such a result no member names when it comes from a class-level ValidationAttribute.
+        /// IValidatableObject.Validate gives none when it calls the ValidationResult constructor
+        /// with only a message. A class-level attribute that passes ValidationContext.MemberName
+        /// gives a null name, because no member is being validated, and some code passes "".
+        /// All of these mean "this object". On a nested object, each of them is reported with the
+        /// path of the object as its only member name, as MVC keys a model-level error by the
+        /// prefix of the model. A result of the root object keeps its member names, because the
+        /// root has no path.
+        /// Before 3.0 a nested result with no member names had none, and a null or empty name gave
+        /// the path with a dot and nothing after it, such as "Value[0].".
+        /// See: https://learn.microsoft.com/dotnet/api/system.componentmodel.dataannotations.validationresult.-ctor
+        /// See: https://learn.microsoft.com/dotnet/api/system.componentmodel.dataannotations.validationcontext.membername
+        /// </summary>
+        public class ObjectLevelResults
+        {
+            public class SelfValidating : IValidatableObject
+            {
+                public string[] MemberNames { get; set; }
+
+                public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+                {
+                    yield return MemberNames == null
+                        ? new ValidationResult("The object is not valid.")
+                        : new ValidationResult("The object is not valid.", MemberNames);
+                }
+            }
+
+            public class Holder
+            {
+                public SelfValidating Inner { get; set; }
+
+                public List<SelfValidating> Items { get; set; }
+            }
+
+            private static List<string> Run(object model)
+            {
+                var results = new List<ValidationResult>();
+                Assert.False(new RecursiveDataAnnotationValidator().TryValidateObjectRecursive(model, results));
+                return ResultText.Describe(results);
+            }
+
+            [Fact]
+            public void Result_with_no_member_names_gets_the_path_of_the_object()
+            {
+                var errors = Run(new Holder { Inner = new SelfValidating() });
+
+                Assert.Equal(ResultText.Expect("Inner | The object is not valid."), errors);
+            }
+
+            [Fact]
+            public void Result_with_no_member_names_on_an_item_gets_the_path_of_the_item()
+            {
+                var errors = Run(new Holder { Items = new List<SelfValidating> { null, new SelfValidating() } });
+
+                Assert.Equal(ResultText.Expect("Items[1] | The object is not valid."), errors);
+            }
+
+            [Fact]
+            public void Result_with_no_member_names_on_an_item_of_a_root_collection_gets_its_index()
+            {
+                var errors = Run(new List<SelfValidating> { new SelfValidating() });
+
+                Assert.Equal(ResultText.Expect("[0] | The object is not valid."), errors);
+            }
+
+            [Theory]
+            [InlineData(null)]
+            [InlineData("")]
+            public void Null_or_empty_member_name_gets_the_path_of_the_object(string name)
+            {
+                var errors = Run(new Holder { Inner = new SelfValidating { MemberNames = new[] { name } } });
+
+                Assert.Equal(ResultText.Expect("Inner | The object is not valid."), errors);
+            }
+
+            // A result that names a member and the object at once keeps both, each with the path.
+            [Fact]
+            public void Named_and_unnamed_members_in_one_result_each_get_the_path()
+            {
+                var errors = Run(new Holder { Inner = new SelfValidating { MemberNames = new[] { "Low", null } } });
+
+                Assert.Equal(ResultText.Expect("Inner.Low,Inner | The object is not valid."), errors);
+            }
+
+            // Guard. The root object has no path, so its results keep their member names.
+            [Fact]
+            public void Result_of_the_root_object_keeps_no_member_names()
+            {
+                var errors = Run(new SelfValidating());
+
+                Assert.Equal(ResultText.Expect(" | The object is not valid."), errors);
+            }
         }
     }
 }

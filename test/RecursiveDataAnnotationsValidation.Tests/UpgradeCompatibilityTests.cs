@@ -160,15 +160,16 @@ namespace RecursiveDataAnnotationsValidation.Tests
 
             /// <summary>
             /// A ValidationAttribute on a class runs with no member name, so its result has none.
-            /// Once nested, the result still has no member names, so it carries no path.
+            /// Once nested, the result gets the path of the object as its member name.
+            /// Changed in 3.0: up to 2.3.3 the result had no member names, so it carried no path.
             /// </summary>
             [Fact]
-            public void Class_level_attribute_on_a_nested_object_has_no_member_name()
+            public void Class_level_attribute_on_a_nested_object_is_reported_at_its_path()
             {
                 var holder = new Holder { Range = new DateRange { Start = 5, End = 1 } };
 
                 Assert.False(Validate(holder, out var results));
-                Assert.Equal(ResultText.Expect(" | Start must not be after End."), results);
+                Assert.Equal(ResultText.Expect("Range | Start must not be after End."), results);
             }
 
             [AttributeUsage(AttributeTargets.Class)]
