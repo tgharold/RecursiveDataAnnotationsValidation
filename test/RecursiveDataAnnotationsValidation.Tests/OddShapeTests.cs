@@ -603,7 +603,9 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// property is checked for its own validation attributes by Validator when the parent is
         /// validated, but nothing inside the struct is walked. A property of the struct that
         /// carries an attribute is never checked, and neither are the items of a collection that is
-        /// itself a struct, such as ImmutableArray&lt;T&gt;.
+        /// itself a struct, such as ImmutableArray&lt;T&gt;, when a property holds it. A struct
+        /// collection that is an item of another collection is enumerated since 2.4.0. The planned
+        /// fix for the property case is in StructCollectionPropertyTests.
         /// These are limitation guards. Record structs with positional `[property: ...]`
         /// attributes are a modern way to model a value, so this one may surprise callers.
         /// See: https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/struct
