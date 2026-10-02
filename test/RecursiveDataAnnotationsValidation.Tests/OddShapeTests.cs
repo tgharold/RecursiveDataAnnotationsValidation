@@ -29,7 +29,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// - A spec. It is not skipped and fails until the fix lands. It states the behavior the fix gives.
     /// Every result below is the same on release 2.2.0 and on the current code, except the
     /// framework types in MembersThatThrow, which are no longer walked, and the collections in
-    /// CollectionsInsideCollections, which 3.0 enumerates.
+    /// CollectionsInsideCollections and CollectionAsRootObject, which 3.0 enumerates.
     /// Not covered here, because it stops the test run: a Task that has not completed makes the
     /// walk read Task.Result, which waits forever. The open decision, with skipped specs, is in
     /// TaskPropertyTests.
