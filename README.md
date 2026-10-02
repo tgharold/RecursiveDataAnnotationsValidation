@@ -1,10 +1,10 @@
 # RecursiveDataAnnotationsValidation
 
-Allows recursive validation of sub-objects in a class when using [DataAnnotations validation](https://docs.microsoft.com/en-us/aspnet/core/mvc/models/validation?view=aspnetcore-3.1) (also known as Attribute Validation).  The current version of .NET Core's attribute validation does not handle objects within objects (or collections of objects).  Therefore it is necessary to add some glue code to recurse through the object graph.
+Validates a whole object graph with [DataAnnotations](https://learn.microsoft.com/en-us/dotnet/api/system.componentmodel.dataannotations) attributes. `Validator.TryValidateObject` checks only the properties of the object you pass it. It does not validate the objects that those properties hold, or the items of a collection. This library walks the graph and validates each object it finds.
 
 ## Installation
 
-### .NET Core
+### .NET CLI
 
     $ dotnet add package RecursiveDataAnnotationsValidation
 
@@ -16,10 +16,12 @@ Allows recursive validation of sub-objects in a class when using [DataAnnotation
 
 Usage of the recursive validation is nearly identical to using the standard validator.
 
-    var validator = new RecursiveDataAnnotationValidator();
-    var validationResults = new List<ValidationResult>();
-    var result = validator.TryValidateObjectRecursive(sut, validationResults);
-    
+```csharp
+var validator = new RecursiveDataAnnotationValidator();
+var validationResults = new List<ValidationResult>();
+var isValid = validator.TryValidateObjectRecursive(model, validationResults);
+```
+
 There are more examples in the [example](https://github.com/tgharold/RecursiveDataAnnotationsValidation/tree/master/examples) and [test](https://github.com/tgharold/RecursiveDataAnnotationsValidation/tree/master/test) projects.
 
 ### Member names
@@ -61,7 +63,7 @@ An object that several paths reach is validated once, and its errors name the sh
 - An item that is a collection is validated as an object first, so its own attributes and `IValidatableObject.Validate` run, then its items.
 - A collection of simple values, such as `List<int>` or `string[]`, is not enumerated, because it cannot hold an invalid object.
 - A collection that you pass to the validator as the root object is validated as an object, then its items are validated. The error starts with the index of the item: `[1].Name`.
-- A collection that is a struct, such as `ImmutableArray<T>`, is validated when a property holds it and when it is an item of another collection: `Lines[0].Sku`. The validator walks a property whose type is a class, or a struct that is a collection of objects. A struct that is not a collection, such as a `Money`, a tuple or a `KeyValuePair`, is not walked, because the validator only reads properties of reference types.
+- A collection that is a struct, such as `ImmutableArray<T>`, is validated when a property holds it and when it is an item of another collection: `Lines[0].Sku`. The validator walks a property whose type is a class, or a struct that is a collection of objects. A struct that is not a collection, such as a `Money`, a value tuple like `(Child, int)` or a `KeyValuePair` property, is not walked, because the validator only reads properties of reference types.
 - The validator runs each collection it enumerates, so a lazy sequence, such as a LINQ query or an iterator, runs during validation. A sequence that never ends makes validation hang. The validator does not catch exceptions, so an exception that a collection throws when it is enumerated reaches your code. A struct collection that is its default value, such as an `ImmutableArray<T>` or an `ArraySegment<T>` that nobody set, is skipped when it is an item or when the property is declared as that struct, because it holds nothing and enumerating it throws. The validator compares the memory of the struct with its default. It does not call the `Equals` of your struct. A property declared as an interface or as `object` is always enumerated.
 
 ### Framework types that are not walked
@@ -70,7 +72,7 @@ The validator does not walk the properties that these framework types declare: `
 
 An object of one of these types is still validated. Attributes on the property that holds it, such as `[Required]` on a `Uri` property, still run. A subclass of your own, such as a class derived from `Uri`, is validated too, and the properties it adds are walked.
 
-Other framework types are walked, so your objects inside them are validated. Examples are tuples, `KeyValuePair` items of a dictionary, and collections.
+Other framework types are walked, so your objects inside them are validated. Examples are the `Tuple` classes, such as `Tuple<Child, int>`, the `KeyValuePair` items of a dictionary, and collections.
 
 ## Build Status
 
