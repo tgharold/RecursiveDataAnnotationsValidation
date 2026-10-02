@@ -28,7 +28,7 @@ The [`[SkipRecursiveValidation]`](https://github.com/tgharold/RecursiveDataAnnot
 
 ### Shared objects, cycles and computed properties
 
-- Each object is validated once, even when several properties point to it. This also stops cycles, such as a child that points back to its parent.
+- Each object is validated once, even when several properties point to it. This also stops cycles, such as a child that points back to its parent. The error names the shortest path to the object (see "Order of results" below).
 - A struct is the exception to the first rule. The validator cannot tell that two copies of a struct are the same value, so it reports an invalid struct once for each route that reaches it. For example, two properties that hold the same array of structs report each struct twice, and so does a `List<object>` that holds an `ArraySegment<T>` of structs, because the segment returns its items by enumeration and through its `Array` property. The error is not lost, but the result list has a duplicate with a different member name. For a collection type of your own, mark the property that repeats the items with `[SkipRecursiveValidation]`.
 - Objects are compared by reference. Two separate objects that are `Equals` to each other, such as records with the same values or entities with the same `Id`, are each validated.
 - Public static properties are walked, as well as instance properties.
@@ -38,11 +38,17 @@ The [`[SkipRecursiveValidation]`](https://github.com/tgharold/RecursiveDataAnnot
 
 ### Maximum depth
 
-The validator walks at most 128 levels. The depth of an object is the number of segments in its path: each property and each collection index is one level, and the root object is level 0. In `Items[1].Name`, `Items` is level 1, `[1]` is level 2 and `Name` is level 3. System.Text.Json counts nearly the same way, with each object and each array as one level, and its default limit is 64. A JSON document within that limit stays within about 63 levels here.
+The validator walks at most 128 levels. The depth of an object is the number of segments in the shortest path to it: each property and each collection index is one level, and the root object is level 0. A link back to a parent, or a second path to a shared object, does not make an object deeper. In `Items[1].Name`, `Items` is level 1, `[1]` is level 2 and `Name` is level 3. System.Text.Json counts nearly the same way, with each object and each array as one level, and its default limit is 64. A JSON document within that limit stays within about 63 levels here.
 
 An object at level 128 is validated. An object at level 129 is not validated, and the validation fails with one error at its path: `The object is nested more than 128 levels deep and was not validated.` The walk does not go deeper below that object. A graph that is too deep means that something has gone wrong, such as a property that builds a new object on each read, so the validator fails the validation instead of letting the graph pass. It does not throw.
 
 A tree that holds its children in a `List<T>` uses two levels for each tree level, so it can be 64 levels deep. The limit is fixed.
+
+### Order of results
+
+The validator walks the graph one level at a time, from the root outward. The results come in that order: the root object's own errors first, then the errors of the objects one level below it, then two levels below it, and so on. The errors of one object stay together, in the order that `Validator.TryValidateObject` returns them. Objects on the same level come in property order, and an item of a collection comes before the properties of the object that holds it. An item of a collection that a property holds is two levels below that object, one for the property and one for the index. So with the properties `First`, `Items` and `Last`, the error of `Last` comes before the error of `Items[0]`. Do not rely on the order of the list. Sort it if you need a fixed order.
+
+An object that several paths reach is validated once, and its errors name the shortest path. If two paths are equally short, the one through the property that comes first wins. This matters most for a model with links back to its parents, such as the entities of an ORM. An order that is in `Store.Orders` is reported as `Orders[0].Code`, not as a long chain of links through its lines and products.
 
 ### Collections
 
