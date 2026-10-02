@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -37,6 +38,12 @@ namespace RecursiveDataAnnotationsValidation.Extensions
 
         private static readonly ConcurrentDictionary<Type, bool> UnsafeToWalkCache =
             new ConcurrentDictionary<Type, bool>();
+
+        private static readonly ConcurrentDictionary<Type, bool> DictionaryTypeCache =
+            new ConcurrentDictionary<Type, bool>();
+
+        private static readonly ConcurrentDictionary<Type, (PropertyInfo Key, PropertyInfo Value)> KeyValuePairProperties =
+            new ConcurrentDictionary<Type, (PropertyInfo Key, PropertyInfo Value)>();
 
         // Framework types whose properties throw, wait, or never end, when the validator walks them.
         // They carry no validation attributes. Only the properties these types and their framework
@@ -167,6 +174,71 @@ namespace RecursiveDataAnnotationsValidation.Extensions
                 .Where(property => property.IsWalked()
                     && !(isCollection && IsInSystemNamespace(property.DeclaringType)))
                 .ToList();
+        }
+
+        /// <summary>
+        /// True for a dictionary: a type that implements IDictionary, IDictionary&lt;TKey, TValue&gt; or
+        /// IReadOnlyDictionary&lt;TKey, TValue&gt;. The validator reports a value of a dictionary by its key.
+        /// A list of KeyValuePair items is not a dictionary.
+        /// </summary>
+        public static bool IsDictionaryType(this Type type)
+        {
+            return DictionaryTypeCache.GetOrAdd(type, t =>
+                typeof(IDictionary).IsAssignableFrom(t)
+                || t.GetInterfaces().Any(i => i.IsGenericType
+                    && (i.GetGenericTypeDefinition() == typeof(IDictionary<,>)
+                        || i.GetGenericTypeDefinition() == typeof(IReadOnlyDictionary<,>))));
+        }
+
+        /// <summary>
+        /// Splits an entry that a dictionary yields, a KeyValuePair&lt;TKey, TValue&gt; or a
+        /// DictionaryEntry, into its key and value. False for any other item.
+        /// </summary>
+        public static bool TryGetDictionaryEntry(this object item, out object key, out object value)
+        {
+            if (item is DictionaryEntry entry)
+            {
+                key = entry.Key;
+                value = entry.Value;
+                return true;
+            }
+
+            var type = item.GetType();
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
+            {
+                var properties = KeyValuePairProperties.GetOrAdd(type, t => (t.GetProperty("Key"), t.GetProperty("Value")));
+                key = properties.Key.GetValue(item, null);
+                value = properties.Value.GetValue(item, null);
+                return true;
+            }
+
+            key = null;
+            value = null;
+            return false;
+        }
+
+        /// <summary>
+        /// The text that names a dictionary value in a path, such as "Primary" in Map[Primary].Name,
+        /// or null for a key that cannot name it. A key can when it has nothing to validate (see
+        /// <see cref="IsLeafType"/>) and is a string, a primitive, an enum, or a struct that formats
+        /// itself, such as a decimal, a Guid or a DateTime. The text uses the invariant culture, so a
+        /// path does not change with the culture of the thread. It is not escaped, as in the names
+        /// that MVC model binding uses for a dictionary, so a key that contains "]" or "." can make a
+        /// path ambiguous.
+        /// </summary>
+        public static string GetKeyText(this object key)
+        {
+            var type = key.GetType();
+            var isSimple = type == typeof(string)
+                || type.IsPrimitive
+                || type.IsEnum
+                || (type.IsValueType && key is IFormattable);
+
+            if (!isSimple || !type.IsLeafType()) return null;
+
+            return key is IFormattable formattable
+                ? formattable.ToString(null, CultureInfo.InvariantCulture)
+                : key.ToString();
         }
 
         /// <summary>

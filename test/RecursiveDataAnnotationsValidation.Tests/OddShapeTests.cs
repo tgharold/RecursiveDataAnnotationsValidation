@@ -78,8 +78,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
         /// must not remove an error that 2.3.3 reports (see CollectionsWithMembersOfTheirOwn).
         /// The items are enumerated before the properties are walked. An object is validated once,
         /// so a Leaf that is reachable both ways is reported at the enumeration path.
-        /// A dictionary item is enumerated as KeyValuePair items, so a List of Dictionary reports
-        /// "Value[0][0].Value.Name", the same member names as a dictionary held in a property.
+        /// A dictionary value is reported by its key, so a List of Dictionary reports
+        /// "Value[0][k].Name", the same member names as a dictionary held in a property.
         /// A collection of a struct type, such as ImmutableArray or a readonly struct that implements
         /// IEnumerable, is enumerated like any other, so an item that hides objects does not pass.
         /// See: https://learn.microsoft.com/dotnet/api/system.array.syncroot
@@ -453,11 +453,11 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 });
 
                 Assert.False(valid);
-                Assert.Equal(ResultText.Expect("Value[0][0].Value.Name" + NameRequired), errors);
+                Assert.Equal(ResultText.Expect("Value[0][k].Name" + NameRequired), errors);
             }
 
             [Fact]
-            public void Dictionary_of_lists_is_validated_through_the_pair_value()
+            public void Dictionary_of_lists_is_validated_through_the_key()
             {
                 var (valid, errors) = Run(new Holder<Dictionary<string, List<Leaf>>>
                 {
@@ -465,7 +465,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 });
 
                 Assert.False(valid);
-                Assert.Equal(ResultText.Expect("Value[0].Value[0].Name" + NameRequired), errors);
+                Assert.Equal(ResultText.Expect("Value[k][0].Name" + NameRequired), errors);
             }
 
             // Up to release 2.3.3 the path was "Value[0].SyncRoot[0].Name".
@@ -623,14 +623,14 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 Assert.Equal(ResultText.Expect("[0].Name" + NameRequired), errors);
             }
 
-            // A dictionary is enumerated as KeyValuePair items, as when a property holds it.
+            // A dictionary value is reported by its key, as when a property holds the dictionary.
             [Fact]
             public void Values_of_a_root_dictionary_are_validated()
             {
                 var (valid, errors) = Run(new Dictionary<string, Leaf> { ["a"] = new Leaf() });
 
                 Assert.False(valid);
-                Assert.Equal(ResultText.Expect("[0].Value.Name" + NameRequired), errors);
+                Assert.Equal(ResultText.Expect("[a].Name" + NameRequired), errors);
             }
 
             [Fact]
@@ -1112,7 +1112,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 var (valid, errors) = Run(new Holder<Hashtable> { Value = new Hashtable { ["k"] = new Leaf() } });
 
                 Assert.False(valid);
-                Assert.Equal(ResultText.Expect("Value[0].Value.Name" + NameRequired), errors);
+                Assert.Equal(ResultText.Expect("Value[k].Name" + NameRequired), errors);
             }
 
             [Fact]
@@ -1133,7 +1133,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 var (valid, errors) = Run(new Holder<ExpandoObject> { Value = expando });
 
                 Assert.False(valid);
-                Assert.Equal(ResultText.Expect("Value[0].Value.Name" + NameRequired), errors);
+                Assert.Equal(ResultText.Expect("Value[item].Name" + NameRequired), errors);
             }
 
             [Fact]
@@ -1148,7 +1148,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
                 });
 
                 Assert.False(valid);
-                Assert.Equal(ResultText.Expect("Value[0].Value[0].Value.Name" + NameRequired), errors);
+                Assert.Equal(ResultText.Expect("Value[a][b].Name" + NameRequired), errors);
             }
 
             [Fact]

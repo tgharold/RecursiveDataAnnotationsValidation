@@ -135,8 +135,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
         // Each case below shows one rule for building the member name:
         // - An array item gets an index like a list item.
         // - A null item is skipped but still uses up its index: NoteList[1], not NoteList[0].
-        // - A dictionary item is a KeyValuePair, so its value is reached through ".Value", and the
-        //   index is the position in enumeration order, not the key.
+        // - A dictionary value is reported by its key: NoteMap[first]. Before 3.0 it was reached
+        //   through ".Value", and the index was the position in enumeration order.
         // - A result with two member names gets the prefix on each of them.
         // - A result with no member names gets the path of the item as its member name.
         //   Before 3.0 it had no path at all.
@@ -160,7 +160,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             {
                 "NoteArray[0].Text | The Text field is required.",
                 "NoteList[1].Text | The Text field is required.",
-                "NoteMap[0].Value.Text | The Text field is required.",
+                "NoteMap[first].Text | The Text field is required.",
                 "Ranges[0].Low,Ranges[0].High | Low must not exceed High.",
                 "Ranges[0] | The range is negative.",
             };

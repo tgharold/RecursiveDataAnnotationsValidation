@@ -59,12 +59,20 @@ An object that several paths reach is validated once, and its errors name the sh
 ### Collections
 
 - The items of a collection that a property holds are validated. The error names the property and the index of the item: `Items[1].Name`.
-- An item that is itself a collection is validated too, at each level: `Matrix[0][2].Name`. This holds for lists, arrays, sets, dictionaries and your own collection types. A dictionary is enumerated as `KeyValuePair` items, so a value that is an object is reported as `Map[0].Value.Name`. A value that is a struct is walked when it has something to validate, as it is when a property holds it (see "Structs" below).
+- An item that is itself a collection is validated too, at each level: `Matrix[0][2].Name`. This holds for lists, arrays, sets, dictionaries and your own collection types. A value of a dictionary is reported by its key (see "Dictionaries" below). A value that is a struct is walked when it has something to validate, as it is when a property holds it (see "Structs" below).
 - An item that is a collection is validated as an object first, so its own attributes and `IValidatableObject.Validate` run, then its items. The properties that a framework type declares on it, such as `ArraySegment<T>.Array`, `LinkedList<T>.First` or `Dictionary<TKey, TValue>.Values`, are not walked, because they repeat the items. A collection that a property holds is treated the same way. The properties that your own collection type adds are walked.
 - A collection of simple values, such as `List<int>` or `string[]`, is not enumerated, because it cannot hold an invalid object.
 - A collection that you pass to the validator as the root object is validated as an object, then its items are validated. The error starts with the index of the item: `[1].Name`.
 - A collection that is a struct, such as `ImmutableArray<T>`, is validated when a property holds it and when it is an item of another collection: `Lines[0].Sku`.
 - The validator runs each collection it enumerates, so a lazy sequence, such as a LINQ query or an iterator, runs during validation. A sequence that never ends makes validation hang. The validator does not catch exceptions, so an exception that a collection throws when it is enumerated reaches your code. A struct collection that is its default value, such as an `ImmutableArray<T>` or an `ArraySegment<T>` that nobody set, is skipped when it is an item or when the property is declared as that struct, because it holds nothing and enumerating it throws. The validator compares the memory of the struct with its default. It does not call the `Equals` of your struct. A property declared as an interface or as `object` is always enumerated.
+
+### Dictionaries
+
+- A value of a dictionary is reported by its key: `Endpoints[Primary].Url`, `Ports[8080].Name`, `ByDay[Monday].Name`. This is the form that MVC model binding uses for a dictionary. A dictionary is a type that implements `IDictionary`, `IDictionary<TKey, TValue>` or `IReadOnlyDictionary<TKey, TValue>`. A list of `KeyValuePair` items is not one, so it keeps `Pairs[0].Value.Name`.
+- A key names its value when it is a string, a number or another primitive, an enum, or a struct that formats itself, such as a `decimal`, a `Guid` or a `DateTime`, and it has nothing to validate. The key is formatted with the invariant culture, so a `decimal` key of 1.5 is `Map[1.5]` on every server.
+- The key is not quoted or escaped. A key that contains `]` or `.`, such as `b.c[0]`, gives a path that you cannot tell apart from a deeper one: `Map[b.c[0]].Name`.
+- Any other key, such as an object of your own, keeps the position of the entry, so the key is validated too: `Map[0].Key.Name` and `Map[0].Value.Name`. The position is the order in which the dictionary enumerates its entries. Each entry chooses its own form.
+- A value is one level below the dictionary, as an item of a list is, for the maximum depth and the order of results.
 
 ### Structs
 

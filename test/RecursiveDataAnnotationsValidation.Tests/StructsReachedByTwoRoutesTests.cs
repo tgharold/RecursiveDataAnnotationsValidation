@@ -223,7 +223,8 @@ namespace RecursiveDataAnnotationsValidation.Tests
             Assert.Equal(ResultText.Expect("[0].Text" + TextRequired), errors);
         }
 
-        // Spec. Before, the Values property gave a second route: Value[0].Values[0].Text.
+        // Spec. Before, the Values property gave a second route: Value[0].Values[0].Text. The
+        // value is reported by its key.
         [Fact]
         public void Struct_value_in_a_dictionary_item_is_reported_once()
         {
@@ -232,7 +233,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             var (valid, errors) = Run(new Holder<List<Dictionary<string, Line>>> { Value = new List<Dictionary<string, Line>> { map } });
 
             Assert.False(valid);
-            Assert.Equal(ResultText.Expect("Value[0][0].Value.Text" + TextRequired), errors);
+            Assert.Equal(ResultText.Expect("Value[0][a].Text" + TextRequired), errors);
         }
     }
 }

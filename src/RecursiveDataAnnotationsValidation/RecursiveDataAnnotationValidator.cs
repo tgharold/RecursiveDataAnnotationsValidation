@@ -197,14 +197,11 @@ namespace RecursiveDataAnnotationsValidation
                 return valid;
             }
 
-            //Queues an object that was found at the end of a path. The path is the parent path plus a
-            //property name, or plus an index if the name is null. A path is a chain of steps, and it is
-            //turned into a string only for an object that has a result.
+            //Queues an object that was found at the end of a path. A path is a chain of steps, and it
+            //is turned into a string only for an object that has a result.
             private void Enqueue(
                 object value,
-                PathStep parent,
-                string propertyName,
-                int index,
+                PathStep path,
                 int depth,
                 EqualsAncestor ancestors
                 )
@@ -227,7 +224,7 @@ namespace RecursiveDataAnnotationsValidation
 
                 queue.Enqueue(new WorkItem(
                     value,
-                    new PathStep(parent, propertyName, index),
+                    path,
                     depth,
                     ancestors,
                     false,
@@ -246,19 +243,46 @@ namespace RecursiveDataAnnotationsValidation
                 )
             {
                 var enumeratedBefore = !enumeratedCollections.Add(items);
+                var isDictionary = items.GetType().IsDictionaryType();
 
                 var arrayIndex = -1;
                 foreach (var item in items)
                 {
                     arrayIndex++;
-
-                    //NOTE: Possibly should have a separate case for Dictionary which reports on the key
-
                     if (item == null) continue;
-                    if (enumeratedBefore && item.GetType().IsValueType) continue;
-                    Enqueue(item, collectionPath, null, arrayIndex, itemDepth, ancestors);
+
+                    //A value of a dictionary is reported by its key, as in Map[Primary].Name, when the
+                    //key can name it (see GetKeyText). Otherwise the whole entry is an item, as in any
+                    //collection, so a key that is an object is validated too: Map[0].Key.Name.
+                    var queued = item;
+                    PathStep path = null;
+                    if (isDictionary && item.TryGetDictionaryEntry(out var key, out var value) && key != null)
+                    {
+                        var keyText = key.GetKeyText();
+                        if (keyText != null)
+                        {
+                            if (value == null) continue;
+                            queued = value;
+                            path = PathStep.ForKey(collectionPath, keyText);
+                        }
+                    }
+
+                    if (enumeratedBefore && HasNoIdentity(queued)) continue;
+                    Enqueue(queued, path ?? new PathStep(collectionPath, null, arrayIndex), itemDepth, ancestors);
                 }
             }
+
+            //True for a struct, which queuedObjects cannot match by reference (see enumeratedCollections).
+            //A dictionary entry is a struct too, but a key or value of a class in it has an identity.
+            private static bool HasNoIdentity(object item)
+            {
+                if (!item.GetType().IsValueType) return false;
+
+                return !item.TryGetDictionaryEntry(out var key, out var value)
+                    || !(IsOfAClass(key) || IsOfAClass(value));
+            }
+
+            private static bool IsOfAClass(object value) => value != null && !value.GetType().IsValueType;
 
             //Walks an object: validates it, then queues what it holds. Returns false if the object has a result.
             private bool Walk(WorkItem item)
@@ -353,7 +377,7 @@ namespace RecursiveDataAnnotationsValidation
                             break;
 
                         default:
-                            Enqueue(value, item.Path, property.Name, -1, item.Depth + 1, ancestors);
+                            Enqueue(value, new PathStep(item.Path, property.Name, -1), item.Depth + 1, ancestors);
                             break;
                     }
                 }
@@ -481,6 +505,9 @@ namespace RecursiveDataAnnotationsValidation
             private readonly string propertyName;
             private readonly int index;
 
+            //the text of a dictionary key, which takes the place of the index
+            private readonly string key;
+
             public PathStep(PathStep parent, string propertyName, int index)
             {
                 this.parent = parent;
@@ -488,7 +515,16 @@ namespace RecursiveDataAnnotationsValidation
                 this.index = index;
             }
 
-            //"Orders[0].Lines[1].Product": a name after the first one is joined with a dot, and an index with none
+            private PathStep(PathStep parent, string key)
+            {
+                this.parent = parent;
+                this.key = key;
+            }
+
+            public static PathStep ForKey(PathStep parent, string key) => new PathStep(parent, key);
+
+            //"Orders[0].Lines[1].Product", "Endpoints[Primary].Url": a name after the first one is
+            //joined with a dot, and an index or a key with none
             public override string ToString()
             {
                 var steps = new List<PathStep>();
@@ -503,7 +539,17 @@ namespace RecursiveDataAnnotationsValidation
                     var step = steps[i];
                     if (step.propertyName == null)
                     {
-                        path.Append('[').Append(step.index).Append(']');
+                        path.Append('[');
+                        if (step.key != null)
+                        {
+                            path.Append(step.key);
+                        }
+                        else
+                        {
+                            path.Append(step.index);
+                        }
+
+                        path.Append(']');
                         continue;
                     }
 
