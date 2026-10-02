@@ -14,10 +14,11 @@ namespace RecursiveDataAnnotationsValidation.Tests
     /// comment thread or a category tree can be dozens of levels deep, and an import can hold
     /// thousands of items.
     ///
-    /// The walk calls itself once for each level, so the depth of the graph is the depth of the
-    /// call stack. These tests run the walk on a thread with a 1 MB stack, which is the default on
-    /// Windows. macOS and Linux give the main thread 8 MB, so a test that runs on the default
-    /// stack would pass on those systems and still overflow on Windows.
+    /// Up to 2.3 the walk called itself once for each level, so the depth of the graph was the depth
+    /// of the call stack. Since 3.0 the walk keeps its work in a queue and uses no stack for the
+    /// depth of the graph. These tests still run the walk on a thread with a 1 MB stack, which is
+    /// the default on Windows, so a walk that calls itself again fails here. macOS and Linux give
+    /// the main thread 8 MB, so a test that runs on the default stack would not show that.
     /// See: https://learn.microsoft.com/dotnet/api/system.threading.thread.-ctor
     ///
     /// The validator has a maximum depth of 128 (see MaxDepthTests), which these tests stay below.
@@ -147,7 +148,7 @@ namespace RecursiveDataAnnotationsValidation.Tests
             public async Task Error_at_the_bottom_has_the_full_path_in_the_async_method()
             {
                 // Task.Run uses a thread-pool thread, whose stack size the caller cannot choose.
-                // A depth of 120 is far below the limit measured for a 1 MB stack.
+                // A depth of 120 is below the maximum depth.
                 var results = new List<ValidationResult>();
 
                 var valid = await new RecursiveDataAnnotationValidator()
