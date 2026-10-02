@@ -8,6 +8,8 @@ Breaking changes are marked **BREAKING**.
 
 ## Unreleased
 
+## 2.3.3 - 2026-10-01
+
 ### Fixed
 
 - Validation no longer throws `TargetInvocationException` when a model holds a `Thread` or a `Process`, for example `Thread.CurrentThread` or `Process.GetCurrentProcess()`. The validator now skips their properties, like those of `Type`, `Uri` and `DirectoryInfo`.
